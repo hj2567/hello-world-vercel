@@ -17,7 +17,7 @@ export default async function Home() {
 
     return (
         <main style = {{ padding:40 }}>
-            <h1>Captions</h1>
+            <h1 style={{ fontSize: "2.5rem", marginBottom: "2rem" }}>Captions</h1>
             <ul>
             {data?.map((row) => (
                 <li key={row.id} style={{ marginBottom: 12 }}>
