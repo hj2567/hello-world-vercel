@@ -4,7 +4,7 @@ export default async function Home() {
     const { data, error } = await supabase
         .from("captions")
         .select("id, content")
-        .limit(20);
+        .limit(40);
 
     if (error) {
         return (
@@ -17,6 +17,7 @@ export default async function Home() {
 
     return (
         <main style = {{ padding:40 }}>
+            <h1 style={{ fontSize: "3rem", marginBottom: "1.5rem" }}>Hello World!</h1>
             <h1 style={{ fontSize: "2.5rem", marginBottom: "2rem" }}>Captions</h1>
             <ul>
             {data?.map((row) => (
