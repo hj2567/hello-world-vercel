@@ -22,7 +22,7 @@ export default async function Home() {
   return (
     <main style={{ padding: 40, maxWidth: 900, margin: "0 auto" }}>
       <h1 style={{ fontSize: "2.75rem", marginBottom: "2rem" }}>
-        Hello World — Captions
+        Hello World! Captions & Images!
       </h1>
 
       <div style={{ display: "grid", gap: 32 }}>
