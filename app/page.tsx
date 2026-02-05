@@ -4,8 +4,8 @@ export default async function Home() {
   const { data, error } = await supabase
     .from("captions")
     .select("id, content, images(url)")
+    .not("image_id", "is", null)
     .order("created_datetime_utc", { ascending: false })
-    .limit(60);
 
   if (error) {
     return (
@@ -16,59 +16,79 @@ export default async function Home() {
     );
   }
 
-  // Only captions that actually have images
-  const rows = (data ?? []).filter((row: any) => row.images?.url);
+  const rows = (data || []).filter((row: any) => row.images?.url);
 
   return (
-    <main style={{ padding: 40, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: "2.75rem", marginBottom: "2rem" }}>
+    <main
+      style={{
+        padding: 40,
+        background: "#0b0b0b",
+        minHeight: "100vh",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "2.5rem",
+          marginBottom: "2rem",
+          color: "#fff",
+        }}
+      >
         Hello World! Captions & Images!
       </h1>
 
-      <div style={{ display: "grid", gap: 32 }}>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(6, 1fr)",
+          gap: 28,
+        }}
+      >
         {rows.map((row: any) => (
-          <article
+          <div
             key={row.id}
             style={{
+              background: "#ffffff",
               borderRadius: 20,
+              boxShadow: "0 15px 40px rgba(0,0,0,0.25)",
               overflow: "hidden",
-              background: "#fff",
-              border: "1px solid rgba(0,0,0,0.08)",
-              boxShadow: "0 16px 36px rgba(0,0,0,0.12)",
+              display: "flex",
+              flexDirection: "column",
             }}
           >
+
             <div
               style={{
-                width: "100%",
-                background: "#f2f2f2",
+                height: 220, // Images same height
+                padding: 12,
                 display: "flex",
+                alignItems: "center",
                 justifyContent: "center",
+                background: "#f6f6f6",
               }}
             >
               <img
                 src={row.images.url}
                 alt=""
                 style={{
-                  width: "100%",
-                  height: "auto",
-                  maxHeight: "80vh", // prevents insanely tall images
-                  objectFit: "contain",
-                  display: "block",
+                  maxWidth: "100%",
+                  maxHeight: "100%",
+                  objectFit: "contain", // Ensuring no crop
+                  borderRadius: 12,
                 }}
               />
             </div>
 
-            <div style={{ padding: "18px 22px" }}>
-              <div
-                style={{
-                  fontSize: "1.25rem",
-                  lineHeight: 1.6,
-                }}
-              >
-                {row.content}
-              </div>
+            <div
+              style={{
+                padding: "14px 16px 18px",
+                fontSize: "0.95rem",
+                lineHeight: 1.45,
+                color: "#111",
+              }}
+            >
+              {row.content}
             </div>
-          </article>
+          </div>
         ))}
       </div>
     </main>
