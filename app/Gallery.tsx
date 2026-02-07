@@ -1,34 +1,70 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
-type DemoUser = {
-  name?: string;
-  email?: string;
-  picture?: string;
+type UserBits = {
+  name: string;
+  email: string;
+  picture: string;
 };
 
+function pickName(u: any) {
+  return (
+    u?.user_metadata?.full_name ||
+    u?.user_metadata?.name ||
+    u?.user_metadata?.given_name ||
+    u?.email?.split("@")?.[0] ||
+    "friend"
+  );
+}
+
 export default function Gallery({ rows }: { rows: any[] }) {
+  const [loadingUser, setLoadingUser] = useState(true);
   const [authed, setAuthed] = useState(false);
-  const [user, setUser] = useState<DemoUser>({});
+  const [user, setUser] = useState<UserBits>({
+    name: "friend",
+    email: "",
+    picture: "",
+  });
 
   useEffect(() => {
-    const isAuthed = localStorage.getItem("demo_authed") === "true";
-    setAuthed(isAuthed);
+    let mounted = true;
 
-    const raw = localStorage.getItem("demo_user");
-    if (raw) {
-      try {
-        setUser(JSON.parse(raw));
-      } catch {}
-    }
+    const load = async () => {
+      const { data } = await supabase.auth.getUser();
+      if (!mounted) return;
+
+      if (data?.user) {
+        setAuthed(true);
+        setUser({
+          name: pickName(data.user),
+          email: data.user.email || "",
+          picture: data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture || "",
+        });
+      } else {
+        setAuthed(false);
+        setUser({ name: "friend", email: "", picture: "" });
+      }
+
+      setLoadingUser(false);
+    };
+
+    load();
+
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      load();
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
-  const logout = () => {
-    localStorage.removeItem("demo_authed");
-    localStorage.removeItem("demo_user");
-    setAuthed(false);
-    setUser({});
+  const logout = async () => {
+    await supabase.auth.signOut();
+    window.location.replace("/");
   };
 
   return (
@@ -41,7 +77,6 @@ export default function Gallery({ rows }: { rows: any[] }) {
           '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
       }}
     >
-      {/* Header */}
       <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
         <h1
           style={{
@@ -52,14 +87,14 @@ export default function Gallery({ rows }: { rows: any[] }) {
             marginBottom: "0.75rem",
           }}
         >
-          Captions & Images ✨
+          Captions & Images!
         </h1>
 
         <p style={{ color: "#aaa", fontSize: "1.05rem", marginBottom: "1.5rem" }}>
           Hover a card to reveal the caption
         </p>
 
-        {!authed ? (
+        {loadingUser ? null : !authed ? (
           <a
             href="/auth"
             style={{
@@ -129,7 +164,6 @@ export default function Gallery({ rows }: { rows: any[] }) {
         )}
       </div>
 
-      {/* Grid */}
       <div
         style={{
           display: "grid",
@@ -138,7 +172,11 @@ export default function Gallery({ rows }: { rows: any[] }) {
         }}
       >
         {rows.map((row: any) => (
-          <FlipCard key={row.id} imageUrl={row.images.url} caption={row.content} />
+          <FlipCard
+            key={row.id}
+            imageUrl={row.images.url}
+            caption={row.content}
+          />
         ))}
       </div>
     </main>
@@ -161,7 +199,7 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
       <div
         style={{
           width: "100%",
-          height: 360,
+          height: 320,
           position: "relative",
           transformStyle: "preserve-3d",
           transition: "transform 0.6s ease",
@@ -169,15 +207,13 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
           borderRadius: radius,
           boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
           cursor: "pointer",
+          overflow: "hidden",
         }}
       >
-        {/* FRONT */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            borderRadius: radius,
-            overflow: "hidden",
             backfaceVisibility: "hidden",
             WebkitBackfaceVisibility: "hidden",
           }}
@@ -189,12 +225,10 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
           />
         </div>
 
-        {/* BACK */}
         <div
           style={{
             position: "absolute",
             inset: 0,
-            borderRadius: radius,
             background: "linear-gradient(160deg, #ffffff, #f2f2f2)",
             transform: "rotateY(180deg)",
             backfaceVisibility: "hidden",

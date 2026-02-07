@@ -16,7 +16,6 @@ export default function Dashboard() {
     const obj: Record<string, string> = {};
     params.forEach((v, k) => (obj[k] = v));
 
-    // Try common fields the proxy might return
     const name =
       pickFirst(obj, ["name", "full_name", "display_name", "given_name"]) ||
       "friend";
@@ -28,7 +27,6 @@ export default function Dashboard() {
     localStorage.setItem("demo_user", JSON.stringify(user));
     localStorage.setItem("demo_authed", "true");
 
-    // Go to gallery
     window.location.replace("/");
   }, []);
 
