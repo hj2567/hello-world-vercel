@@ -7,6 +7,9 @@ export default function AuthCallback() {
   useEffect(() => {
     const finish = async () => {
       await supabase.auth.getSession();
+
+      sessionStorage.removeItem("oauth_started");
+
       window.location.replace("/");
     };
     finish();
