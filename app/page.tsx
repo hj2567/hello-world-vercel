@@ -36,6 +36,23 @@ export default async function Home() {
         Hello World! Captions & Images!
       </h1>
 
+      <a
+        href="/auth"
+        style={{
+          display: "inline-block",
+          marginBottom: "2rem",
+          padding: "10px 16px",
+          borderRadius: 12,
+          background: "#ffffff",
+          color: "#111",
+          fontWeight: 600,
+          textDecoration: "none",
+          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+        }}
+      >
+        Log in with Google
+      </a>
+
       <div
         style={{
           display: "grid",
