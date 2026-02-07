@@ -41,7 +41,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
           '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
       }}
     >
-
+      {/* Header */}
       <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
         <h1
           style={{
@@ -52,7 +52,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
             marginBottom: "0.75rem",
           }}
         >
-          Captions & Images!
+          Captions & Images ✨
         </h1>
 
         <p style={{ color: "#aaa", fontSize: "1.05rem", marginBottom: "1.5rem" }}>
@@ -129,6 +129,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
         )}
       </div>
 
+      {/* Grid */}
       <div
         style={{
           display: "grid",
@@ -170,7 +171,7 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
           cursor: "pointer",
         }}
       >
-
+        {/* FRONT */}
         <div
           style={{
             position: "absolute",
@@ -188,6 +189,7 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
           />
         </div>
 
+        {/* BACK */}
         <div
           style={{
             position: "absolute",
