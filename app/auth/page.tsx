@@ -5,8 +5,10 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function AuthPage() {
   useEffect(() => {
+
     const onPageShow = (e: PageTransitionEvent) => {
       if (e.persisted) {
+        sessionStorage.removeItem("oauth_started_at");
         window.location.replace("/");
       }
     };
@@ -14,9 +16,11 @@ export default function AuthPage() {
 
     const now = Date.now();
     const last = Number(sessionStorage.getItem("oauth_started_at") || "0");
-    const COOLDOWN_MS = 3000;
+
+    const COOLDOWN_MS = 500;
 
     if (last && now - last < COOLDOWN_MS) {
+      sessionStorage.removeItem("oauth_started_at");
       window.location.replace("/");
       return () => window.removeEventListener("pageshow", onPageShow);
     }
@@ -77,7 +81,7 @@ export default function AuthPage() {
         </h1>
 
         <p style={{ color: "#aaa", fontSize: "1.05rem" }}>
-          One moment! getting things ready.
+          One moment. Getting things ready!
         </p>
 
         <style>{`
