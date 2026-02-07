@@ -1,52 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect } from "react";
 
-function getCookie(name: string) {
-  const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-  return m ? decodeURIComponent(m[2]) : "";
-}
-
-export default function DashboardPage() {
-  const [tokenPreview, setTokenPreview] = useState("");
-
-  useEffect(() => {
-    const t = getCookie("id_token");
-    setTokenPreview(t ? t.slice(0, 20) + "..." : "(missing)");
-  }, []);
-export default function AuthPage() {
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+function pickFirst(obj: Record<string, string>, keys: string[]) {
+  for (const k of keys) {
+    const v = obj[k];
+    if (v && v.trim().length > 0) return v;
   }
-
-return (
-<main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>Dashboard (Protected)</h1>
-      <p>If you can see this, middleware allowed you through </p>
-      <p style={{ fontSize: 12, opacity: 0.75 }}>id_token: {tokenPreview}</p>
-
-      <form action="/api/auth/logout" method="post" style={{ marginTop: 16 }}>
-        <button type="submit">Log out</button>
-      </form>
-      <h1>Sign in</h1>
-      <button
-        onClick={signInWithGoogle}
-        style={{
-          padding: "12px 16px",
-          borderRadius: 10,
-          border: "1px solid #111",
-          cursor: "pointer",
-        }}
-      >
-        Sign in with Google
-      </button>
-</main>
-);
+  return "";
 }
+
+export default function Dashboard() {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const obj: Record<string, string> = {};
+    params.forEach((v, k) => (obj[k] = v));
+
+    // Try common fields the proxy might return
+    const name =
+      pickFirst(obj, ["name", "full_name", "display_name", "given_name"]) ||
+      "friend";
+    const email = pickFirst(obj, ["email", "user_email"]);
+    const picture = pickFirst(obj, ["picture", "avatar", "photo"]);
+
+    const user = { name, email, picture };
+
+    localStorage.setItem("demo_user", JSON.stringify(user));
+    localStorage.setItem("demo_authed", "true");
+
+    // Go to gallery
+    window.location.replace("/");
+  }, []);
+
+  return (
+    <main style={{ padding: 40, fontFamily: "system-ui" }}>
+      <h1>Signing you in…</h1>
+      <p>Redirecting to the gallery.</p>
+    </main>
+  );
 }
