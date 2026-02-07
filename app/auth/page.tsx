@@ -30,6 +30,7 @@ export default function AuthPage() {
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
 
+
   return (
     <main style={{ padding: 40, maxWidth: 520 }}>
       <h1>Auth Login</h1>
