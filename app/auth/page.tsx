@@ -5,14 +5,20 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function AuthPage() {
   useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        window.location.replace("/");
+      }
+    };
+    window.addEventListener("pageshow", onPageShow);
+
     const now = Date.now();
     const last = Number(sessionStorage.getItem("oauth_started_at") || "0");
-
     const COOLDOWN_MS = 3000;
 
     if (last && now - last < COOLDOWN_MS) {
       window.location.replace("/");
-      return;
+      return () => window.removeEventListener("pageshow", onPageShow);
     }
 
     sessionStorage.setItem("oauth_started_at", String(now));
@@ -27,6 +33,10 @@ export default function AuthPage() {
     };
 
     go();
+
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+    };
   }, []);
 
   return (
@@ -54,12 +64,22 @@ export default function AuthPage() {
             animation: "spin 1s linear infinite",
           }}
         />
-        <h1 style={{ fontSize: "2.1rem", fontWeight: 800, marginBottom: 12 }}>
+
+        <h1
+          style={{
+            fontSize: "2.1rem",
+            fontWeight: 800,
+            marginBottom: 12,
+            letterSpacing: "-0.02em",
+          }}
+        >
           Redirecting to Google...
         </h1>
+
         <p style={{ color: "#aaa", fontSize: "1.05rem" }}>
-          One moment. getting things ready.
+          One moment! getting things ready.
         </p>
+
         <style>{`
           @keyframes spin {
             to { transform: rotate(360deg); }
