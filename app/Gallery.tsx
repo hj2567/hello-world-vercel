@@ -1,8 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type DemoUser = {
+  name?: string;
+  email?: string;
+  picture?: string;
+};
 
 export default function Gallery({ rows }: { rows: any[] }) {
+  const [authed, setAuthed] = useState(false);
+  const [user, setUser] = useState<DemoUser>({});
+
+  useEffect(() => {
+    const isAuthed = localStorage.getItem("demo_authed") === "true";
+    setAuthed(isAuthed);
+
+    const raw = localStorage.getItem("demo_user");
+    if (raw) {
+      try {
+        setUser(JSON.parse(raw));
+      } catch {}
+    }
+  }, []);
+
+  const logout = () => {
+    localStorage.removeItem("demo_authed");
+    localStorage.removeItem("demo_user");
+    setAuthed(false);
+    setUser({});
+  };
+
   return (
     <main
       style={{
@@ -24,34 +52,81 @@ export default function Gallery({ rows }: { rows: any[] }) {
             marginBottom: "0.75rem",
           }}
         >
-          Captions & Images !
+          Captions & Images!
         </h1>
 
-        <p
-          style={{
-            color: "#aaa",
-            fontSize: "1.05rem",
-            marginBottom: "1.75rem",
-          }}
-        >
+        <p style={{ color: "#aaa", fontSize: "1.05rem", marginBottom: "1.5rem" }}>
           Hover a card to reveal the caption
         </p>
 
-        <a
-          href="/auth"
-          style={{
-            display: "inline-block",
-            padding: "12px 20px",
-            borderRadius: 999,
-            background: "#fff",
-            color: "#111",
-            fontWeight: 700,
-            textDecoration: "none",
-            boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-          }}
-        >
-          Log in with Google
-        </a>
+        {!authed ? (
+          <a
+            href="/auth"
+            style={{
+              display: "inline-block",
+              padding: "12px 20px",
+              borderRadius: 999,
+              background: "#fff",
+              color: "#111",
+              fontWeight: 700,
+              textDecoration: "none",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
+            }}
+          >
+            Log in with Google
+          </a>
+        ) : (
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "10px 14px",
+              borderRadius: 999,
+              background: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              color: "#fff",
+            }}
+          >
+            {user.picture ? (
+              <img
+                src={user.picture}
+                alt=""
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 999,
+                  objectFit: "cover",
+                }}
+              />
+            ) : null}
+
+            <div style={{ textAlign: "left" }}>
+              <div style={{ fontWeight: 800, lineHeight: 1.1 }}>
+                Welcome, {user.name || "friend"}!
+              </div>
+              {user.email ? (
+                <div style={{ fontSize: 12, opacity: 0.8 }}>{user.email}</div>
+              ) : null}
+            </div>
+
+            <button
+              onClick={logout}
+              style={{
+                marginLeft: 10,
+                padding: "10px 14px",
+                borderRadius: 999,
+                background: "#fff",
+                color: "#111",
+                fontWeight: 800,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Logout
+            </button>
+          </div>
+        )}
       </div>
 
       <div
@@ -71,7 +146,6 @@ export default function Gallery({ rows }: { rows: any[] }) {
 
 function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) {
   const [hovered, setHovered] = useState(false);
-
   const radius = 26;
 
   return (
@@ -110,14 +184,9 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
           <img
             src={imageUrl}
             alt=""
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-            }}
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         </div>
-
 
         <div
           style={{
@@ -135,14 +204,7 @@ function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) 
             textAlign: "center",
           }}
         >
-          <div
-            style={{
-              fontSize: "1.05rem",
-              lineHeight: 1.5,
-              fontWeight: 600,
-              color: "#111",
-            }}
-          >
+          <div style={{ fontSize: "1.05rem", lineHeight: 1.5, fontWeight: 700 }}>
             {caption}
           </div>
         </div>

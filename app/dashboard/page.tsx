@@ -1,31 +1,37 @@
 "use client";
 
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect } from "react";
 
-export default function AuthPage() {
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
+function pickFirst(obj: Record<string, string>, keys: string[]) {
+  for (const k of keys) {
+    const v = obj[k];
+    if (v && v.trim()) return v;
   }
+  return "";
+}
+
+export default function Dashboard() {
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const obj: Record<string, string> = {};
+    params.forEach((v, k) => (obj[k] = v));
+
+    const name =
+      pickFirst(obj, ["name", "full_name", "display_name", "given_name"]) ||
+      "friend";
+    const email = pickFirst(obj, ["email", "user_email"]);
+    const picture = pickFirst(obj, ["picture", "avatar", "photo"]);
+
+    localStorage.setItem("demo_user", JSON.stringify({ name, email, picture }));
+    localStorage.setItem("demo_authed", "true");
+
+    window.location.replace("/");
+  }, []);
 
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>Sign in</h1>
-      <button
-        onClick={signInWithGoogle}
-        style={{
-          padding: "12px 16px",
-          borderRadius: 10,
-          border: "1px solid #111",
-          cursor: "pointer",
-        }}
-      >
-        Sign in with Google
-      </button>
+    <main style={{ padding: 40, fontFamily: "system-ui" }}>
+      <h1>Signing you in…</h1>
+      <p>Redirecting to the gallery.</p>
     </main>
   );
 }
