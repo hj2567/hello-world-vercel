@@ -1,49 +1,39 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-export default function AuthPage() {
-  const [loginUrl, setLoginUrl] = useState("");
+export default function AuthCallbackPage() {
+  const [payload, setPayload] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
-    const proxyApiKey = process.env.NEXT_PUBLIC_CRACKD_APIKEY!;
-    const redirectUri = `${window.location.origin}/auth/callback`; // REQUIRED
+    const params = new URLSearchParams(window.location.search);
+    const obj: Record<string, string> = {};
+    params.forEach((v, k) => (obj[k] = v));
+    setPayload(obj);
 
-    const url = new URL("https://secure.crackd.ai/auth/google");
-    url.searchParams.set("client_id", clientId);
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("apikey", proxyApiKey);
-
-    setLoginUrl(url.toString());
   }, []);
 
+  const pretty = useMemo(() => JSON.stringify(payload, null, 2), [payload]);
+
   return (
-    <main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>Sign in</h1>
-
-      {loginUrl ? (
-        <>
-          <a
-            href={loginUrl}
-            style={{
-              display: "inline-block",
-              padding: "10px 14px",
-              border: "1px solid black",
-              borderRadius: 8,
-              textDecoration: "none",
-            }}
-          >
-            Sign in with Google
-          </a>
-
-          <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
-            Generated URL: {loginUrl}
-          </p>
-        </>
-      ) : (
-        <p>Loading…</p>
-      )}
+    <main style={{ padding: 40, fontFamily: "system-ui" }}>
+      <h1>Auth callback</h1>
+      <p>If you see values below, the redirect worked ✅</p>
+      <pre
+        style={{
+          marginTop: 16,
+          padding: 16,
+          background: "#111",
+          color: "#0f0",
+          borderRadius: 12,
+          overflowX: "auto",
+        }}
+      >
+        {pretty}
+      </pre>
+      <p style={{ marginTop: 12, opacity: 0.7, fontSize: 12 }}>
+        URL must be exactly <b>/auth/callback</b> (no extra routes).
+      </p>
     </main>
   );
 }
