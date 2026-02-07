@@ -9,12 +9,12 @@ type UserBits = {
   picture: string;
 };
 
-function pickName(u: any) {
+function pickName(user: any) {
   return (
-    u?.user_metadata?.full_name ||
-    u?.user_metadata?.name ||
-    u?.user_metadata?.given_name ||
-    u?.email?.split("@")?.[0] ||
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.user_metadata?.given_name ||
+    user?.email?.split("@")?.[0] ||
     "friend"
   );
 }
@@ -40,7 +40,10 @@ export default function Gallery({ rows }: { rows: any[] }) {
         setUser({
           name: pickName(data.user),
           email: data.user.email || "",
-          picture: data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture || "",
+          picture:
+            data.user.user_metadata?.avatar_url ||
+            data.user.user_metadata?.picture ||
+            "",
         });
       } else {
         setAuthed(false);
@@ -71,12 +74,13 @@ export default function Gallery({ rows }: { rows: any[] }) {
     <main
       style={{
         padding: 40,
-        background: "radial-gradient(circle at top, #1a1a1a, #000)",
         minHeight: "100vh",
+        background: "radial-gradient(circle at top, #1a1a1a, #000)",
         fontFamily:
           '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif',
       }}
     >
+
       <div style={{ textAlign: "center", marginBottom: "3.5rem" }}>
         <h1
           style={{
@@ -87,7 +91,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
             marginBottom: "0.75rem",
           }}
         >
-          Captions & Images!
+          Captions & Images !
         </h1>
 
         <p style={{ color: "#aaa", fontSize: "1.05rem", marginBottom: "1.5rem" }}>
@@ -164,6 +168,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
         )}
       </div>
 
+      {/* Grid */}
       <div
         style={{
           display: "grid",
@@ -172,7 +177,7 @@ export default function Gallery({ rows }: { rows: any[] }) {
         }}
       >
         {rows.map((row: any) => (
-          <FlipCard
+          <HoverRevealCard
             key={row.id}
             imageUrl={row.images.url}
             caption={row.content}
@@ -183,67 +188,75 @@ export default function Gallery({ rows }: { rows: any[] }) {
   );
 }
 
-function FlipCard({ imageUrl, caption }: { imageUrl: string; caption: string }) {
+function HoverRevealCard({
+  imageUrl,
+  caption,
+}: {
+  imageUrl: string;
+  caption: string;
+}) {
   const [hovered, setHovered] = useState(false);
   const radius = 26;
 
+  const safeCaption = caption?.trim()?.length ? caption : "No caption 😭";
+
   return (
     <div
-      style={{ perspective: 1200 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
       tabIndex={0}
+      style={{
+        height: 360,
+        borderRadius: radius,
+        overflow: "hidden",
+        position: "relative",
+        boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
+        cursor: "pointer",
+        outline: "none",
+      }}
     >
-      <div
+
+      <img
+        src={imageUrl}
+        alt=""
         style={{
           width: "100%",
-          height: 320,
-          position: "relative",
-          transformStyle: "preserve-3d",
-          transition: "transform 0.6s ease",
+          height: "100%",
+          objectFit: "cover",
           transform: hovered ? "rotateY(180deg)" : "rotateY(0deg)",
-          borderRadius: radius,
-          boxShadow: "0 18px 45px rgba(0,0,0,0.35)",
-          cursor: "pointer",
-          overflow: "hidden",
+          transition: "transform 0.6s ease, filter 0.25s ease, opacity 0.25s ease",
+          filter: hovered ? "brightness(0.55)" : "none",
+          opacity: hovered ? 0 : 1,
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 28,
+          textAlign: "center",
+          background: "linear-gradient(160deg, #ffffff, #f2f2f2)",
+          color: "#111",
+          fontWeight: 800,
+          fontSize: "1.05rem",
+          lineHeight: 1.5,
+          opacity: hovered ? 1 : 0,
+          transform: hovered ? "rotateY(0deg)" : "rotateY(180deg)",
+          transition: "opacity 0.25s ease, transform 0.6s ease",
+          backfaceVisibility: "hidden",
+          WebkitBackfaceVisibility: "hidden",
+          whiteSpace: "pre-wrap",
         }}
       >
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-          }}
-        >
-          <img
-            src={imageUrl}
-            alt=""
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        </div>
-
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            background: "linear-gradient(160deg, #ffffff, #f2f2f2)",
-            transform: "rotateY(180deg)",
-            backfaceVisibility: "hidden",
-            WebkitBackfaceVisibility: "hidden",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 26,
-            textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "1.05rem", lineHeight: 1.5, fontWeight: 700 }}>
-            {caption}
-          </div>
-        </div>
+        {safeCaption}
       </div>
     </div>
   );
