@@ -4,7 +4,17 @@ import { randomString, sha256, base64url } from "@/lib/pkce";
 
 export default function AuthPage() {
   const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-  <p>clientId: {clientId ?? "MISSING"}</p>
+  if (!clientId) {
+    return (
+      <main style={{ padding: 40 }}>
+        <h1>Auth Login</h1>
+        <p style={{ color: "red" }}>
+          Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID (set it in Vercel env vars + redeploy)
+        </p>
+      </main>
+    );
+  }
+
 
   async function signIn() {
     const state = randomString(32);
