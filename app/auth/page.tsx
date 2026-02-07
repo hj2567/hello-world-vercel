@@ -20,7 +20,7 @@ export default function AuthPage() {
     sessionStorage.setItem("oauth_state", state);
     sessionStorage.setItem("oauth_nonce", nonce);
 
-    const url = new URL("https://secure.crackd.ai/oauth/google");
+    const url = new URL("https://secure.crackd.ai/login/google");
 
     url.searchParams.set("client_id", clientId);
     url.searchParams.set("redirect_uri", redirectUri);
