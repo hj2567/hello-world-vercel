@@ -1,59 +1,40 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
-export default function AuthCallbackPage() {
-  const [msg, setMsg] = useState("Finishing sign-in...");
+function parseHash(hash: string) {
+  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
+  return new URLSearchParams(raw);
+}
+
+export default function CallbackPage() {
+  const router = useRouter();
 
   useEffect(() => {
-    const url = new URL(window.location.href);
-    const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    const err = url.searchParams.get("error");
+    const params = parseHash(window.location.hash);
 
-    if (err) {
-      setMsg(`Sign-in error: ${err}`);
+    const idToken = params.get("id_token") || "";
+    const returnedState = params.get("state") || "";
+    const expectedState = sessionStorage.getItem("oauth_state") || "";
+
+    if (!idToken || !returnedState || returnedState !== expectedState) {
+      router.replace("/auth");
       return;
     }
 
-    const savedState = sessionStorage.getItem("oauth_state");
-    const codeVerifier = sessionStorage.getItem("code_verifier");
+    document.cookie = `id_token=${encodeURIComponent(idToken)}; Path=/; SameSite=Lax; Secure`;
 
-    if (!code || !state || !codeVerifier || !savedState) {
-      setMsg("Missing code/state. Go back to /auth and try again.");
-      return;
-    }
-    if (state !== savedState) {
-      setMsg("State mismatch. Go back to /auth and try again.");
-      return;
-    }
+    sessionStorage.removeItem("oauth_state");
+    sessionStorage.removeItem("oauth_nonce");
 
-    const redirectUri = `${window.location.origin}/auth/callback`;
-
-    (async () => {
-      const r = await fetch("/api/auth/exchange", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, codeVerifier, redirectUri }),
-      });
-
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        setMsg(`Login failed: ${j?.error ?? "unknown error"}`);
-        return;
-      }
-
-      sessionStorage.removeItem("oauth_state");
-      sessionStorage.removeItem("code_verifier");
-
-      window.location.href = "/dashboard";
-    })();
-  }, []);
+    router.replace("/dashboard");
+  }, [router]);
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>/auth/callback</h1>
-      <p>{msg}</p>
+    <main style={{ padding: 24, fontFamily: "system-ui" }}>
+      <h1>Signing you in…</h1>
+      <p>Callback route: /auth/callback</p>
     </main>
   );
 }

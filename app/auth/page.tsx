@@ -1,65 +1,68 @@
 "use client";
 
-import { randomString, sha256, base64url } from "@/lib/pkce";
+import { useEffect, useState } from "react";
+
+function randomString(len = 32) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => ("0" + (b % 256).toString(16)).slice(-2)).join("");
+}
 
 export default function AuthPage() {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const [loginUrl, setLoginUrl] = useState("");
 
-  if (!clientId) {
-    return (
-      <main style={{ padding: 40 }}>
-        <h1>Auth Login</h1>
-        <p style={{ color: "red" }}>
-          Missing NEXT_PUBLIC_GOOGLE_CLIENT_ID (set it in Vercel env vars + redeploy)
-        </p>
-      </main>
-    );
-  }
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
+    const redirectUri = `${window.location.origin}/auth/callback`; // REQUIRED
 
-  async function signIn() {
-
-    const verifier = randomString(64);
-    const challenge = base64url(await sha256(verifier));
-    const state = randomString(24);
-
-    sessionStorage.setItem("pkce_verifier", verifier);
+    const state = randomString(16);
+    const nonce = randomString(16);
     sessionStorage.setItem("oauth_state", state);
+    sessionStorage.setItem("oauth_nonce", nonce);
 
-    const redirectUri = `${window.location.origin}/auth/callback`;
+    const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
 
-    const params = new URLSearchParams(
-      Object.entries({
-        client_id: clientId,
-        redirect_uri: redirectUri,
-        response_type: "code",
-        scope: "openid email profile",
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-        state,
-        prompt: "consent",
-      }).map(([k, v]) => [k, String(v)])
-    );
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
 
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
-  }
+    url.searchParams.set("response_type", "id_token");
+    url.searchParams.set("response_mode", "fragment");
+
+    url.searchParams.set("scope", "openid email profile");
+    url.searchParams.set("state", state);
+    url.searchParams.set("nonce", nonce);
+
+    url.searchParams.set("prompt", "select_account");
+
+    setLoginUrl(url.toString());
+  }, []);
 
   return (
-    <main style={{ padding: 40, maxWidth: 520 }}>
-      <h1>Auth Login</h1>
-      <p>Sign in with Google to access the gated UI.</p>
+    <main style={{ padding: 24, fontFamily: "system-ui" }}>
+      <h1>Sign in</h1>
 
-      <button
-        onClick={signIn}
-        style={{
-          padding: "10px 14px",
-          cursor: "pointer",
-          border: "1px solid #ccc",
-          borderRadius: 8,
-          background: "white",
-        }}
-      >
-        Sign in with Google
-      </button>
+      {loginUrl ? (
+        <>
+          <a
+            href={loginUrl}
+            style={{
+              display: "inline-block",
+              padding: "10px 14px",
+              border: "1px solid black",
+              borderRadius: 8,
+              textDecoration: "none",
+            }}
+          >
+            Sign in with Google
+          </a>
+
+          <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+            Redirect URI: <b>/auth/callback</b>
+          </p>
+        </>
+      ) : (
+        <p>Loading…</p>
+      )}
     </main>
   );
 }
