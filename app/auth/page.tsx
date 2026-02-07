@@ -15,6 +15,7 @@ export default function AuthPage() {
     );
   }
 
+const clientIdStr = clientId;
 
   async function signIn() {
     const state = randomString(32);
