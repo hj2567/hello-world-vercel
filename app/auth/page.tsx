@@ -3,7 +3,8 @@
 import { randomString, sha256, base64url } from "@/lib/pkce";
 
 export default function AuthPage() {
-  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
+  const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  <p>clientId: {clientId ?? "MISSING"}</p>
 
   async function signIn() {
     const state = randomString(32);
@@ -29,7 +30,6 @@ export default function AuthPage() {
 
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   }
-
 
   return (
     <main style={{ padding: 40, maxWidth: 520 }}>
