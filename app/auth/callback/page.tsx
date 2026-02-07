@@ -1,40 +1,49 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
-function parseHash(hash: string) {
-  const raw = hash.startsWith("#") ? hash.slice(1) : hash;
-  return new URLSearchParams(raw);
-}
-
-export default function CallbackPage() {
-  const router = useRouter();
+export default function AuthPage() {
+  const [loginUrl, setLoginUrl] = useState("");
 
   useEffect(() => {
-    const params = parseHash(window.location.hash);
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!;
+    const proxyApiKey = process.env.NEXT_PUBLIC_CRACKD_APIKEY!;
+    const redirectUri = `${window.location.origin}/auth/callback`; // REQUIRED
 
-    const idToken = params.get("id_token") || "";
-    const returnedState = params.get("state") || "";
-    const expectedState = sessionStorage.getItem("oauth_state") || "";
+    const url = new URL("https://secure.crackd.ai/auth/google");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("redirect_uri", redirectUri);
+    url.searchParams.set("apikey", proxyApiKey);
 
-    if (!idToken || !returnedState || returnedState !== expectedState) {
-      router.replace("/auth");
-      return;
-    }
-
-    document.cookie = `id_token=${encodeURIComponent(idToken)}; Path=/; SameSite=Lax; Secure`;
-
-    sessionStorage.removeItem("oauth_state");
-    sessionStorage.removeItem("oauth_nonce");
-
-    router.replace("/dashboard");
-  }, [router]);
+    setLoginUrl(url.toString());
+  }, []);
 
   return (
     <main style={{ padding: 24, fontFamily: "system-ui" }}>
-      <h1>Signing you in…</h1>
-      <p>Callback route: /auth/callback</p>
+      <h1>Sign in</h1>
+
+      {loginUrl ? (
+        <>
+          <a
+            href={loginUrl}
+            style={{
+              display: "inline-block",
+              padding: "10px 14px",
+              border: "1px solid black",
+              borderRadius: 8,
+              textDecoration: "none",
+            }}
+          >
+            Sign in with Google
+          </a>
+
+          <p style={{ marginTop: 12, fontSize: 12, opacity: 0.7 }}>
+            Generated URL: {loginUrl}
+          </p>
+        </>
+      ) : (
+        <p>Loading…</p>
+      )}
     </main>
   );
 }
