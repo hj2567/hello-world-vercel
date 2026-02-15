@@ -29,7 +29,6 @@ type ThemeMode = "auto" | "day" | "night";
 export default function RatePage() {
   const [loading, setLoading] = useState(true);
 
-  // ✅ NEW: blocks rendering the “wrong first image” during restore
   const [restoring, setRestoring] = useState(true);
 
   const [sessionReady, setSessionReady] = useState(false);
@@ -53,18 +52,18 @@ export default function RatePage() {
 
   const [captionPinned, setCaptionPinned] = useState(false);
 
-  // ✅ one-time restore guard (prevents snapping back)
+
   const didRestoreRef = useRef(false);
-  // ✅ only save lastSeen after restore finishes (prevents overwriting to row[0])
+
   const restoreCompleteRef = useRef(false);
 
-  // Rate-limit / slow down toast
+
   const MIN_VOTE_GAP_MS = 350;
   const [lastVoteAt, setLastVoteAt] = useState<number>(0);
   const [slowMsg, setSlowMsg] = useState<string>("");
   const [showSlow, setShowSlow] = useState(false);
 
-  // Theme
+
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [systemPrefersDark, setSystemPrefersDark] = useState(true);
 
@@ -112,7 +111,7 @@ export default function RatePage() {
     return "";
   };
 
-  // --- Resume to last seen caption id (per user) ---
+
   const lastSeenKey = (uid: string) => `rate_last_seen_caption_id:${uid}`;
 
   const setLastSeen = (captionId: string) => {
@@ -136,7 +135,7 @@ export default function RatePage() {
     return voteMap[captionId] != null;
   };
 
-  // Find next unrated index starting at `start`
+
   const computeNextUnratedIndex = (start: number, extraRated?: Set<string>) => {
     let idx = Math.max(0, start);
     while (idx < rows.length && isRated(rows[idx].id, extraRated)) idx++;
@@ -150,15 +149,14 @@ export default function RatePage() {
     if (restoreCompleteRef.current && nextId) setLastSeen(nextId);
   };
 
-  // ✅ Save last seen ONLY after restore is complete
+
   useEffect(() => {
     if (!restoreCompleteRef.current) return;
     if (!current || !userId) return;
     setLastSeen(current.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [current?.id, userId]);
 
-  // System theme + saved theme
   useEffect(() => {
     const saved = (localStorage.getItem("rate_theme") || "auto") as ThemeMode;
     if (saved === "auto" || saved === "day" || saved === "night") {
@@ -183,7 +181,6 @@ export default function RatePage() {
     localStorage.setItem("rate_theme", themeMode);
   }, [themeMode]);
 
-  // Slowdown toast auto-hide
   useEffect(() => {
     if (!showSlow) return;
     const tmr = window.setTimeout(() => setShowSlow(false), 1200);
@@ -229,7 +226,6 @@ export default function RatePage() {
     if (error) throw error;
   };
 
-  // Session
   useEffect(() => {
     const run = async () => {
       const { data } = await supabase.auth.getSession();
@@ -256,17 +252,14 @@ export default function RatePage() {
     };
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load captions
   useEffect(() => {
     if (!sessionReady) return;
 
     const load = async () => {
       setLoading(true);
 
-      // ✅ NEW: make sure we won't render an image until restore resolves
       setRestoring(true);
 
       setErrMsg("");
@@ -287,7 +280,7 @@ export default function RatePage() {
         setErrMsg(error.message);
         setRows([]);
         setLoading(false);
-        setRestoring(false); // ✅ NEW
+        setRestoring(false);
         return;
       }
 
@@ -296,13 +289,11 @@ export default function RatePage() {
       setUndoStack([]);
       setCaptionPinned(false);
       setLoading(false);
-      // restoring ends in restore effect
     };
 
     load();
   }, [sessionReady]);
 
-  // Load votes for captions
   useEffect(() => {
     const run = async () => {
       if (!userId) return;
@@ -334,9 +325,6 @@ export default function RatePage() {
     run();
   }, [userId, rows]);
 
-  // ✅ UPDATED restore logic:
-  // - if lastSeen exists and is already rated, jump to next unrated
-  // - block rendering until done (restoring=false)
   useEffect(() => {
     if (!userId) return;
     if (!rows.length) return;
@@ -357,7 +345,7 @@ export default function RatePage() {
         restoreCompleteRef.current = true;
         if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
 
-        setRestoring(false); // ✅ NEW
+        setRestoring(false);
         return;
       }
     }
@@ -367,9 +355,8 @@ export default function RatePage() {
     restoreCompleteRef.current = true;
     if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
 
-    setRestoring(false); // ✅ NEW
+    setRestoring(false);
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, votesLoaded, userId, voteMap]);
 
   const logout = async () => {
@@ -602,7 +589,6 @@ export default function RatePage() {
     transition: "color 1000ms ease",
   };
 
-  // ✅ UPDATED: block rendering until restore is done
   if (loading || restoring) {
     return (
       <div style={bgWrapStyle}>
@@ -623,11 +609,6 @@ export default function RatePage() {
       </div>
     );
   }
-
-  // ...rest of your render stays identical below (no changes needed)
-  // (kept as-is in your original file)
-  // IMPORTANT: you already compute `imageUrl`, `undoDisabled`, and render the UI
-  // after this point.
 
   if (!current) {
     return (
@@ -754,7 +735,6 @@ export default function RatePage() {
           </div>
         </div>
 
-        {/* Slow-down toast */}
         <div
           aria-live="polite"
           style={{
