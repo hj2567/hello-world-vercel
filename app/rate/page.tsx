@@ -144,7 +144,6 @@ export default function RatePage() {
 
   const jumpToIndex = (idx: number) => {
     setI(idx);
-    setCaptionPinned(false);
     const nextId = rows[idx]?.id;
     if (restoreCompleteRef.current && nextId) setLastSeen(nextId);
   };
@@ -815,7 +814,9 @@ export default function RatePage() {
             onClick={() => setCaptionPinned((v) => !v)}
             title="Hover to preview, Space to toggle caption"
           >
+
             <img src={imageUrl} alt="" style={img} />
+
             <div
               className="captionOverlay"
               style={{ opacity: captionPinned ? 1 : undefined }}
@@ -833,9 +834,10 @@ export default function RatePage() {
                   "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
               }}
             >
-              ↑ / ↓ vote • Z undo • Space caption
+              ↑ / ↓ vote • Z undo
             </div>
           </div>
+
 
           <div style={controls}>
             <button
@@ -888,10 +890,59 @@ export default function RatePage() {
           </div>
         </div>
 
+        {/* Progress bar */}
         <div
           style={{
             maxWidth: 980,
             margin: "18px auto 0",
+            padding: "0 18px",
+          }}
+        >
+          <div
+            style={{
+              height: 4,
+              width: "100%",
+              borderRadius: 999,
+              background:
+                effectiveTheme === "day"
+                  ? "rgba(20,17,15,0.08)"
+                  : "rgba(255,255,255,0.12)",
+              overflow: "hidden",
+              transition: "background 1000ms ease",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${rows.length ? (ratedCount / rows.length) * 100 : 0}%`,
+                background: t.btnBg,
+                borderRadius: 999,
+                transition: "width 300ms ease",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Mid instruction line (between vote controls and theme toggle) */}
+        <div
+          style={{
+            marginTop: 26,
+            padding: "0 16px 16px",
+            textAlign: "center",
+            fontSize: 14,
+            fontWeight: 800,
+            color: t.muted,
+            letterSpacing: "0.01em",
+            transition: "color 1000ms ease",
+          }}
+        >
+          Hover the image to preview • Press Space to keep the caption on
+        </div>
+
+        <div
+          style={{
+            maxWidth: 980,
+            margin: "4px auto 0",
             display: "flex",
             justifyContent: "center",
           }}
@@ -1015,7 +1066,9 @@ const imgWrap: CSSProperties = {
 const img: CSSProperties = {
   width: "100%",
   height: "100%",
-  objectFit: "cover",
+  objectFit: "contain",
+  objectPosition: "center",
+  transition: "opacity 180ms ease",
 };
 
 const captionText: CSSProperties = {
