@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type Row = {
@@ -25,10 +26,13 @@ type UserInfo = {
 };
 
 type ThemeMode = "auto" | "day" | "night";
+type NavMode = "upload" | "rate";
 
 export default function RatePage() {
-  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
 
+  const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(true);
 
   const [sessionReady, setSessionReady] = useState(false);
@@ -52,20 +56,29 @@ export default function RatePage() {
 
   const [captionPinned, setCaptionPinned] = useState(false);
 
-
   const didRestoreRef = useRef(false);
-
   const restoreCompleteRef = useRef(false);
-
 
   const MIN_VOTE_GAP_MS = 350;
   const [lastVoteAt, setLastVoteAt] = useState<number>(0);
   const [slowMsg, setSlowMsg] = useState<string>("");
   const [showSlow, setShowSlow] = useState(false);
 
-
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [systemPrefersDark, setSystemPrefersDark] = useState(true);
+
+  const [themeHydrated, setThemeHydrated] = useState(false);
+
+  const [navMode, setNavMode] = useState<NavMode>("rate");
+  useEffect(() => {
+    if ((pathname || "").startsWith("/rate")) setNavMode("rate");
+    else setNavMode("upload");
+  }, [pathname]);
+
+  const onNavChange = (v: NavMode) => {
+    setNavMode(v);
+    router.push(v === "upload" ? "/upload" : "/rate");
+  };
 
   const current = rows[i] || null;
 
@@ -111,7 +124,6 @@ export default function RatePage() {
     return "";
   };
 
-
   const lastSeenKey = (uid: string) => `rate_last_seen_caption_id:${uid}`;
 
   const setLastSeen = (captionId: string) => {
@@ -135,7 +147,6 @@ export default function RatePage() {
     return voteMap[captionId] != null;
   };
 
-
   const computeNextUnratedIndex = (start: number, extraRated?: Set<string>) => {
     let idx = Math.max(0, start);
     while (idx < rows.length && isRated(rows[idx].id, extraRated)) idx++;
@@ -148,12 +159,10 @@ export default function RatePage() {
     if (restoreCompleteRef.current && nextId) setLastSeen(nextId);
   };
 
-
   useEffect(() => {
     if (!restoreCompleteRef.current) return;
     if (!current || !userId) return;
     setLastSeen(current.id);
-
   }, [current?.id, userId]);
 
   useEffect(() => {
@@ -170,6 +179,8 @@ export default function RatePage() {
     if (mq.addEventListener) mq.addEventListener("change", handler);
     else mq.addListener(handler);
 
+    setThemeHydrated(true);
+
     return () => {
       if (mq.removeEventListener) mq.removeEventListener("change", handler);
       else mq.removeListener(handler);
@@ -177,8 +188,9 @@ export default function RatePage() {
   }, []);
 
   useEffect(() => {
+    if (!themeHydrated) return;
     localStorage.setItem("rate_theme", themeMode);
-  }, [themeMode]);
+  }, [themeMode, themeHydrated]);
 
   useEffect(() => {
     if (!showSlow) return;
@@ -258,7 +270,6 @@ export default function RatePage() {
 
     const load = async () => {
       setLoading(true);
-
       setRestoring(true);
 
       setErrMsg("");
@@ -355,7 +366,6 @@ export default function RatePage() {
     if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
 
     setRestoring(false);
-
   }, [rows, votesLoaded, userId, voteMap]);
 
   const logout = async () => {
@@ -495,13 +505,6 @@ export default function RatePage() {
   }, [rows, voteMap]);
 
   const ratedCount = rows.length - unratedCount;
-
-  const unratedPosition = useMemo(() => {
-    if (!current) return 0;
-    let before = 0;
-    for (let k = 0; k < i; k++) if (voteMap[rows[k]?.id] == null) before++;
-    return voteMap[current.id] == null ? before + 1 : before;
-  }, [current, i, rows, voteMap]);
 
   const t = useMemo(() => {
     if (effectiveTheme === "day") {
@@ -703,22 +706,25 @@ export default function RatePage() {
             </div>
           </div>
 
-          <div style={{ textAlign: "right" }}>
-            <div
-              style={{
-                color: t.muted as any,
-                fontSize: 13,
-                fontWeight: 800,
-                transition: "color 1000ms ease",
-              }}
-            >
-              {ratedCount} / {rows.length}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ textAlign: "right" }}>
+              <div
+                style={{
+                  color: t.muted as any,
+                  fontSize: 13,
+                  fontWeight: 800,
+                  transition: "color 1000ms ease",
+                }}
+              >
+                {ratedCount} / {rows.length}
+              </div>
             </div>
+
+            <ModeToggle value={navMode} onChange={onNavChange} t={t} />
 
             <button
               onClick={logout}
               style={{
-                marginTop: 8,
                 padding: "10px 14px",
                 borderRadius: 999,
                 background: t.btnBg,
@@ -814,7 +820,6 @@ export default function RatePage() {
             onClick={() => setCaptionPinned((v) => !v)}
             title="Hover to preview, Space to toggle caption"
           >
-
             <img src={imageUrl} alt="" style={img} />
 
             <div
@@ -837,7 +842,6 @@ export default function RatePage() {
               ↑ / ↓ vote • Z undo
             </div>
           </div>
-
 
           <div style={controls}>
             <button
@@ -923,7 +927,6 @@ export default function RatePage() {
           </div>
         </div>
 
-        {/* Mid instruction line (between vote controls and theme toggle) */}
         <div
           style={{
             marginTop: 26,
@@ -964,6 +967,51 @@ export default function RatePage() {
           .imgWrap:hover .captionOverlay { opacity: 1; }
         `}</style>
       </main>
+    </div>
+  );
+}
+
+function ModeToggle({
+  value,
+  onChange,
+  t,
+}: {
+  value: NavMode;
+  onChange: (v: NavMode) => void;
+  t: any;
+}) {
+  const pillStyle: CSSProperties = {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: 4,
+    background: t.ghostBg,
+    border: `1px solid ${t.ghostBorder}`,
+    gap: 4,
+    transition: "background 1000ms ease, border-color 1000ms ease",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
+  };
+
+  const btn = (active: boolean): CSSProperties => ({
+    padding: "8px 12px",
+    borderRadius: 999,
+    border: "none",
+    cursor: "pointer",
+    fontWeight: 950,
+    fontSize: 12,
+    background: active ? t.btnBg : "transparent",
+    color: active ? t.btnText : t.ghostText,
+    transition: "background 1000ms ease, color 1000ms ease",
+    minWidth: 70,
+  });
+
+  return (
+    <div style={pillStyle} aria-label="Mode">
+      <button style={btn(value === "upload")} onClick={() => onChange("upload")}>
+        Upload
+      </button>
+      <button style={btn(value === "rate")} onClick={() => onChange("rate")}>
+        Rate
+      </button>
     </div>
   );
 }
@@ -1036,7 +1084,7 @@ function SigningScreen({ subtitle, t }: { subtitle: string; t: any }) {
           letterSpacing: "-0.02em",
         }}
       >
-        Signing you in…
+        Loading…
       </h1>
       <p style={{ color: t.muted as any, fontSize: "1.05rem", fontWeight: 700 }}>
         {subtitle}
