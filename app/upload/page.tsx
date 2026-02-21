@@ -6,6 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type ThemeMode = "auto" | "day" | "night";
+type NavMode = "upload" | "rate";
 
 type UserInfo = {
   name: string;
@@ -22,7 +23,22 @@ type HistoryItem = {
   captions: string[];
 };
 
-type NavMode = "upload" | "rate";
+const THEME_KEY = "rate_theme";
+
+const safeGetTheme = (): ThemeMode => {
+  if (typeof window === "undefined") return "auto";
+  const v = (localStorage.getItem(THEME_KEY) || "auto") as ThemeMode;
+  return v === "day" || v === "night" || v === "auto" ? v : "auto";
+};
+
+const safeGetPrefersDark = (): boolean => {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true;
+  } catch {
+    return true;
+  }
+};
 
 export default function UploadGeneratePage() {
   const router = useRouter();
@@ -38,22 +54,15 @@ export default function UploadGeneratePage() {
     picture: "",
   });
 
-  // ✅ Theme follows Rate page (rate_theme). No UI toggle here.
-  // ✅ IMPORTANT: read synchronously on first render to avoid "black → day" animation
-  const THEME_KEY = "rate_theme";
+  // ✅ Initialize theme + system preference BEFORE first paint (prevents flash)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => safeGetTheme());
+  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() =>
+    safeGetPrefersDark()
+  );
 
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    if (typeof window === "undefined") return "auto";
-    const saved = (localStorage.getItem(THEME_KEY) || "auto") as ThemeMode;
-    return saved === "auto" || saved === "day" || saved === "night"
-      ? saved
-      : "auto";
-  });
-
-  const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true;
-  });
+  // ✅ Disable transitions until after mount (prevents weird crossfade on navigation)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [file, setFile] = useState<File | null>(null);
 
@@ -74,7 +83,6 @@ export default function UploadGeneratePage() {
 
   // ✅ upload/rate toggle state
   const [navMode, setNavMode] = useState<NavMode>("upload");
-
   useEffect(() => {
     if ((pathname || "").startsWith("/rate")) setNavMode("rate");
     else setNavMode("upload");
@@ -82,11 +90,10 @@ export default function UploadGeneratePage() {
 
   const onNavChange = (v: NavMode) => {
     setNavMode(v);
-    if (v === "upload") router.push("/upload");
-    else router.push("/rate");
+    router.push(v === "upload" ? "/upload" : "/rate");
   };
 
-  // ✅ Only listen to system theme changes here (DON'T re-read themeMode on mount)
+  // ✅ Track system theme (for Auto)
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => setSystemPrefersDark(mq.matches);
@@ -102,16 +109,21 @@ export default function UploadGeneratePage() {
     };
   }, []);
 
-  // ✅ Keep in sync if theme is changed elsewhere in the app
-  // Note: "storage" fires across tabs/windows. For same-tab updates, this is still harmless.
+  // ✅ Keep up-to-date if theme was changed elsewhere (and you come back to this tab)
   useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key !== THEME_KEY) return;
-      const v = (e.newValue || "auto") as ThemeMode;
-      if (v === "auto" || v === "day" || v === "night") setThemeMode(v);
+    const syncFromStorage = () => setThemeMode(safeGetTheme());
+
+    const onFocus = () => syncFromStorage();
+    const onVis = () => {
+      if (document.visibilityState === "visible") syncFromStorage();
     };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   const effectiveTheme: "day" | "night" = useMemo(() => {
@@ -190,7 +202,7 @@ export default function UploadGeneratePage() {
     background:
       "radial-gradient(circle at top, #fff7e8 0%, #f7f2e6 48%, #f3efe7 100%)",
     opacity: effectiveTheme === "day" ? 1 : 0,
-    transition: "opacity 1000ms ease",
+    transition: mounted ? "opacity 1000ms ease" : "none",
   };
 
   const dayTintStyle: CSSProperties = {
@@ -199,7 +211,7 @@ export default function UploadGeneratePage() {
     background:
       "radial-gradient(circle at 25% 0%, rgba(255, 214, 140, 0.22), rgba(255, 214, 140, 0.0) 62%)",
     opacity: effectiveTheme === "day" ? 1 : 0,
-    transition: "opacity 1000ms ease",
+    transition: mounted ? "opacity 1000ms ease" : "none",
     pointerEvents: "none",
     mixBlendMode: "multiply",
   };
@@ -208,7 +220,7 @@ export default function UploadGeneratePage() {
     position: "relative",
     zIndex: 1,
     padding: 24,
-    transition: "color 1000ms ease",
+    transition: mounted ? "color 1000ms ease" : "none",
   };
 
   const nowIso = () => new Date().toISOString();
@@ -552,7 +564,7 @@ export default function UploadGeneratePage() {
                   borderRadius: 999,
                   objectFit: "cover",
                   border: `1px solid ${t.cardBorder}`,
-                  transition: "border-color 1000ms ease",
+                  transition: mounted ? "border-color 1000ms ease" : "none",
                 }}
               />
             ) : (
@@ -566,8 +578,9 @@ export default function UploadGeneratePage() {
                       ? "rgba(20,17,15,0.06)"
                       : "rgba(255,255,255,0.10)",
                   border: `1px solid ${t.cardBorder}`,
-                  transition:
-                    "background 1000ms ease, border-color 1000ms ease",
+                  transition: mounted
+                    ? "background 1000ms ease, border-color 1000ms ease"
+                    : "none",
                 }}
               />
             )}
@@ -586,7 +599,7 @@ export default function UploadGeneratePage() {
                 style={{
                   color: t.muted as any,
                   fontSize: 13,
-                  transition: "color 1000ms ease",
+                  transition: mounted ? "color 1000ms ease" : "none",
                 }}
               >
                 {userInfo.name || "friend"} · {userInfo.email || ""}
@@ -594,8 +607,10 @@ export default function UploadGeneratePage() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <NavToggle value={navMode} onChange={onNavChange} t={t} />
+          {/* ✅ RIGHT SIDE: MATCH Rate sizing */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <ModeToggle value={navMode} onChange={onNavChange} t={t} />
+
             <button
               onClick={logout}
               style={{
@@ -606,8 +621,9 @@ export default function UploadGeneratePage() {
                 fontWeight: 900,
                 border: "none",
                 cursor: "pointer",
-                transition: "background 1000ms ease, color 1000ms ease",
-                boxShadow: t.shadow,
+                transition: mounted
+                  ? "background 1000ms ease, color 1000ms ease"
+                  : "none",
               }}
             >
               Logout
@@ -624,8 +640,9 @@ export default function UploadGeneratePage() {
             boxShadow: t.shadow,
             border: `1px solid ${t.cardBorder}`,
             background: t.cardBg,
-            transition:
-              "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease",
+            transition: mounted
+              ? "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease"
+              : "none",
           }}
           onDragOver={onDragOver}
           onDrop={onDropFile}
@@ -653,8 +670,9 @@ export default function UploadGeneratePage() {
                   color: t.ghostText,
                   fontWeight: 900,
                   cursor: "pointer",
-                  transition:
-                    "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
+                  transition: mounted
+                    ? "background 1000ms ease, color 1000ms ease, border-color 1000ms ease"
+                    : "none",
                 }}
               >
                 <input
@@ -671,7 +689,7 @@ export default function UploadGeneratePage() {
                   color: t.muted as any,
                   fontWeight: 850,
                   fontSize: 14,
-                  transition: "color 1000ms ease",
+                  transition: mounted ? "color 1000ms ease" : "none",
                 }}
               >
                 {file
@@ -692,8 +710,9 @@ export default function UploadGeneratePage() {
                 border: "none",
                 cursor: running ? "default" : "pointer",
                 opacity: running ? 0.75 : 1,
-                transition:
-                  "background 1000ms ease, color 1000ms ease, opacity 140ms ease",
+                transition: mounted
+                  ? "background 1000ms ease, color 1000ms ease, opacity 140ms ease"
+                  : "opacity 140ms ease",
                 minWidth: 160,
                 boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
               }}
@@ -734,8 +753,9 @@ export default function UploadGeneratePage() {
                     fontWeight: 850,
                     backdropFilter: "blur(10px)",
                     WebkitBackdropFilter: "blur(10px)",
-                    transition:
-                      "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
+                    transition: mounted
+                      ? "background 1000ms ease, color 1000ms ease, border-color 1000ms ease"
+                      : "none",
                   }}
                 >
                   {status}
@@ -755,8 +775,9 @@ export default function UploadGeneratePage() {
                     effectiveTheme === "day"
                       ? "rgba(255,255,255,0.62)"
                       : "rgba(255,255,255,0.06)",
-                  transition:
-                    "background 1000ms ease, border-color 1000ms ease",
+                  transition: mounted
+                    ? "background 1000ms ease, border-color 1000ms ease"
+                    : "none",
                 }}
               >
                 <div style={resultInner}>
@@ -845,7 +866,7 @@ export default function UploadGeneratePage() {
               color: t.muted as any,
               fontWeight: 900,
               fontSize: 13,
-              transition: "color 1000ms ease",
+              transition: mounted ? "color 1000ms ease" : "none",
               textAlign: "right",
             }}
           >
@@ -899,8 +920,9 @@ export default function UploadGeneratePage() {
                   background: t.cardBg,
                   boxShadow: t.shadow,
                   height: "100%",
-                  transition:
-                    "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease",
+                  transition: mounted
+                    ? "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease"
+                    : "none",
                 }}
               >
                 <div style={historyCardInner}>
@@ -969,7 +991,8 @@ export default function UploadGeneratePage() {
   );
 }
 
-function NavToggle({
+/** ✅ EXACT same sizing as Rate page */
+function ModeToggle({
   value,
   onChange,
   t,
@@ -978,38 +1001,32 @@ function NavToggle({
   onChange: (v: NavMode) => void;
   t: any;
 }) {
-  const wrap: CSSProperties = {
+  const pillStyle: CSSProperties = {
     display: "inline-flex",
-    alignItems: "center",
     borderRadius: 999,
     padding: 4,
+    background: t.ghostBg,
+    border: `1px solid ${t.ghostBorder}`,
     gap: 4,
-    background: t.pillBg,
-    border: `1px solid ${t.pillBorder}`,
-    backdropFilter: "blur(10px)",
-    WebkitBackdropFilter: "blur(10px)",
+    transition: "background 1000ms ease, border-color 1000ms ease",
+    boxShadow: "0 10px 28px rgba(0,0,0,0.10)",
   };
 
   const btn = (active: boolean): CSSProperties => ({
-    padding: "7px 12px",
+    padding: "8px 12px",
     borderRadius: 999,
     border: "none",
     cursor: "pointer",
     fontWeight: 950,
     fontSize: 12,
-    letterSpacing: "-0.01em",
     background: active ? t.btnBg : "transparent",
-    color: active ? t.btnText : t.pillText,
-    opacity: active ? 1 : 0.78,
-    transition:
-      "background 180ms ease, color 180ms ease, opacity 180ms ease, transform 180ms ease",
-    minWidth: 74,
-    lineHeight: 1,
-    transform: active ? "translateY(-0.5px)" : "translateY(0px)",
+    color: active ? t.btnText : t.ghostText,
+    transition: "background 1000ms ease, color 1000ms ease",
+    minWidth: 70,
   });
 
   return (
-    <div style={wrap} aria-label="Navigation">
+    <div style={pillStyle} aria-label="Mode">
       <button style={btn(value === "upload")} onClick={() => onChange("upload")}>
         Upload
       </button>
