@@ -658,10 +658,25 @@ export default function RatePage() {
               Want to add more images? →
             </button>
 
-            <div
-              style={{ marginTop: 18, display: "flex", justifyContent: "center" }}
-            >
-              <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
+            {/* Small secondary logout button */}
+            <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
+              <button
+                onClick={logout}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: t.ghostBg,
+                  border: `1px solid ${t.ghostBorder}`,
+                  color: t.ghostText,
+                  fontWeight: 900,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  transition:
+                    "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
+                }}
+              >
+                Logout
+              </button>
             </div>
           </div>
         </div>

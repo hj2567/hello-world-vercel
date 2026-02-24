@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -54,13 +54,11 @@ export default function UploadGeneratePage() {
     picture: "",
   });
 
-  // ✅ Initialize theme + system preference BEFORE first paint (prevents flash)
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => safeGetTheme());
   const [systemPrefersDark, setSystemPrefersDark] = useState<boolean>(() =>
     safeGetPrefersDark()
   );
 
-  // ✅ Disable transitions until after mount (prevents weird crossfade on navigation)
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -81,7 +79,6 @@ export default function UploadGeneratePage() {
 
   const didInitRef = useRef(false);
 
-  // ✅ upload/rate toggle state
   const [navMode, setNavMode] = useState<NavMode>("upload");
   useEffect(() => {
     if ((pathname || "").startsWith("/rate")) setNavMode("rate");
@@ -93,7 +90,6 @@ export default function UploadGeneratePage() {
     router.push(v === "upload" ? "/upload" : "/rate");
   };
 
-  // ✅ Track system theme (for Auto)
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
     const apply = () => setSystemPrefersDark(mq.matches);
@@ -109,7 +105,6 @@ export default function UploadGeneratePage() {
     };
   }, []);
 
-  // ✅ Keep up-to-date if theme was changed elsewhere (and you come back to this tab)
   useEffect(() => {
     const syncFromStorage = () => setThemeMode(safeGetTheme());
 
@@ -296,20 +291,51 @@ export default function UploadGeneratePage() {
     router.push("/");
   };
 
+
+  const splitMaybeList = (s: string) => {
+    const raw = (s || "").trim();
+    if (!raw) return [];
+
+    const hasNewlines = raw.includes("\n");
+    const looksNumbered = /^\s*\d+[\.\)]\s+/m.test(raw);
+    const looksBulleted = /^\s*[-•]\s+/m.test(raw);
+
+    if (hasNewlines || looksNumbered || looksBulleted) {
+      return raw
+        .split(/\r?\n+/)
+        .map((line) =>
+          line
+            .replace(/^\s*\d+[\.\)]\s+/, "") // "1. " or "1) "
+            .replace(/^\s*[-•]\s+/, "") // "- " or "• "
+            .trim()
+        )
+        .filter(Boolean);
+    }
+
+    // Sometimes models return "a; b; c" as a single string.
+    if (raw.includes(";") && raw.split(";").length >= 3) {
+      return raw
+        .split(";")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    return [raw];
+  };
+
   const normalizeCaptions = (arr: ApiCaption[]) => {
     const out: string[] = [];
     for (const it of arr || []) {
       if (typeof it === "string") {
-        const s = it.trim();
-        if (s) out.push(s);
+        out.push(...splitMaybeList(it));
         continue;
       }
-      const s =
-        (it?.content || it?.caption || it?.text || "").toString().trim();
-      if (s) out.push(s);
+      const s = (it?.content || it?.caption || it?.text || "").toString();
+      out.push(...splitMaybeList(s));
     }
     return out;
   };
+
 
   const uniqCaptions = (arr: string[], limit = 5) => {
     const seen = new Set<string>();
@@ -317,10 +343,18 @@ export default function UploadGeneratePage() {
     for (const raw of arr || []) {
       const s = (raw || "").trim();
       if (!s) continue;
-      const key = s.toLowerCase().replace(/\s+/g, " ");
+
+      const key = s
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/[“”]/g, '"')
+        .replace(/[’]/g, "'")
+        .replace(/[.!?]+$/g, ""); // drop trailing punctuation
+
       if (seen.has(key)) continue;
       seen.add(key);
       out.push(s);
+
       if (out.length >= limit) break;
     }
     return out;
@@ -379,7 +413,15 @@ export default function UploadGeneratePage() {
       const g = map.get(imageId)!;
       if (!g.created_datetime_utc) g.created_datetime_utc = created;
 
-      const key = content.trim().toLowerCase().replace(/\s+/g, " ");
+      // Use same normalization as uniqCaptions so history doesn't show duplicates either
+      const key = content
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .replace(/[“”]/g, '"')
+        .replace(/[’]/g, "'")
+        .replace(/[.!?]+$/g, "");
+
       if (g._seen?.has(key)) continue;
       g._seen?.add(key);
 
@@ -495,15 +537,61 @@ export default function UploadGeneratePage() {
       setStatus("Saving captions to Supabase…");
 
       const ts = nowIso();
-      const inserts = captions.map((c) => ({
-        profile_id: userId,
-        image_id: step3.imageId,
-        content: c,
-        is_public: false,
-        is_featured: false,
-        created_datetime_utc: ts,
-        modified_datetime_utc: ts,
-      }));
+
+      // ✅ Avoid inserting duplicates that already exist for this image_id + profile_id
+      const { data: existing, error: existErr } = await supabase
+        .from("captions")
+        .select("content")
+        .eq("profile_id", userId)
+        .eq("image_id", step3.imageId)
+        .limit(200);
+
+      if (existErr) throw existErr;
+
+      const existingKeys = new Set(
+        (existing || []).map((r: any) =>
+          (r?.content || "")
+            .toString()
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .replace(/[“”]/g, '"')
+            .replace(/[’]/g, "'")
+            .replace(/[.!?]+$/g, "")
+        )
+      );
+
+      const inserts = captions
+        .filter((c) => {
+          const key = (c || "")
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, " ")
+            .replace(/[“”]/g, '"')
+            .replace(/[’]/g, "'")
+            .replace(/[.!?]+$/g, "");
+          return key && !existingKeys.has(key);
+        })
+        .map((c) => ({
+          profile_id: userId,
+          image_id: step3.imageId,
+          content: c,
+          is_public: false,
+          is_featured: false,
+          created_datetime_utc: ts,
+          modified_datetime_utc: ts,
+        }));
+
+      if (inserts.length === 0) {
+        setLastResult({
+          imageId: step3.imageId,
+          imageUrl: step1.cdnUrl,
+          captions, // still show what the model generated
+        });
+        setStatus("Done ✅ (No new captions to save — all were duplicates.)");
+        await loadHistory(userId);
+        return;
+      }
 
       const { error: insErr } = await supabase.from("captions").insert(inserts);
       if (insErr) throw insErr;
