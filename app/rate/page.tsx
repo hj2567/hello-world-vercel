@@ -66,7 +66,6 @@ export default function RatePage() {
 
   const [themeMode, setThemeMode] = useState<ThemeMode>("auto");
   const [systemPrefersDark, setSystemPrefersDark] = useState(true);
-
   const [themeHydrated, setThemeHydrated] = useState(false);
 
   const [navMode, setNavMode] = useState<NavMode>("rate");
@@ -88,6 +87,49 @@ export default function RatePage() {
     return systemPrefersDark ? "night" : "day";
   }, [themeMode, systemPrefersDark]);
 
+  const t = useMemo(() => {
+    if (effectiveTheme === "day") {
+      return {
+        text: "#14110f",
+        muted: "rgba(20,17,15,0.58)",
+        cardBg: "rgba(255,255,255,0.72)",
+        cardBorder: "rgba(20,17,15,0.10)",
+        shadow: "0 18px 55px rgba(20,17,15,0.10)",
+        hintBg: "rgba(255,255,255,0.62)",
+        hintBorder: "rgba(20,17,15,0.10)",
+        hintText: "rgba(20,17,15,0.78)",
+        btnBg: "#14110f",
+        btnText: "#fff7e8",
+        ghostBg: "rgba(20,17,15,0.06)",
+        ghostBorder: "rgba(20,17,15,0.14)",
+        ghostText: "#14110f",
+        overlay:
+          "linear-gradient(to top, rgba(20,17,15,0.70), rgba(20,17,15,0.25), rgba(20,17,15,0.70))",
+        spinnerBorder: "3px solid rgba(20,17,15,0.12)",
+        spinnerTop: "#14110f",
+      };
+    }
+    return {
+      text: "#fff",
+      muted: "#aaa",
+      cardBg: "rgba(255,255,255,0.04)",
+      cardBorder: "rgba(255,255,255,0.12)",
+      shadow: "0 18px 55px rgba(0,0,0,0.45)",
+      hintBg: "rgba(0,0,0,0.35)",
+      hintBorder: "rgba(255,255,255,0.16)",
+      hintText: "rgba(255,255,255,0.9)",
+      btnBg: "#fff",
+      btnText: "#111",
+      ghostBg: "rgba(255,255,255,0.12)",
+      ghostBorder: "rgba(255,255,255,0.18)",
+      ghostText: "#fff",
+      overlay:
+        "linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.30), rgba(0,0,0,0.78))",
+      spinnerBorder: "3px solid rgba(255,255,255,0.2)",
+      spinnerTop: "#fff",
+    };
+  }, [effectiveTheme]);
+
   const nowIso = () => new Date().toISOString();
 
   const pickFirst = (obj: any, keys: string[]) => {
@@ -100,7 +142,6 @@ export default function RatePage() {
 
   const getGoogleAvatar = (user: any) => {
     const meta = user?.user_metadata || {};
-
     const direct =
       pickFirst(meta, ["picture", "avatar_url", "photo"]) ||
       pickFirst(user, ["picture", "avatar_url"]);
@@ -147,10 +188,16 @@ export default function RatePage() {
     return voteMap[captionId] != null;
   };
 
-  const computeNextUnratedIndex = (start: number, extraRated?: Set<string>) => {
-    let idx = Math.max(0, start);
-    while (idx < rows.length && isRated(rows[idx].id, extraRated)) idx++;
-    return idx;
+  const findNextUnratedIndex = (start: number, extraRated?: Set<string>) => {
+    if (!rows.length) return 0;
+    const s = Math.max(0, Math.min(start, rows.length));
+    for (let idx = s; idx < rows.length; idx++) {
+      if (!isRated(rows[idx].id, extraRated)) return idx;
+    }
+    for (let idx = 0; idx < s; idx++) {
+      if (!isRated(rows[idx].id, extraRated)) return idx;
+    }
+    return rows.length; // none left
   };
 
   const jumpToIndex = (idx: number) => {
@@ -349,7 +396,7 @@ export default function RatePage() {
       const idx = rows.findIndex((r) => r.id === lastId);
       if (idx !== -1) {
         const start = voteMap[lastId] != null ? idx + 1 : idx;
-        const nextIdx = computeNextUnratedIndex(start);
+        const nextIdx = findNextUnratedIndex(start);
 
         setI(nextIdx);
         restoreCompleteRef.current = true;
@@ -360,7 +407,7 @@ export default function RatePage() {
       }
     }
 
-    const nextIdx = computeNextUnratedIndex(0);
+    const nextIdx = findNextUnratedIndex(0);
     setI(nextIdx);
     restoreCompleteRef.current = true;
     if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
@@ -403,7 +450,7 @@ export default function RatePage() {
 
     setVoteMap((m) => ({ ...m, [captionId]: v }));
 
-    const nextIdx = computeNextUnratedIndex(i + 1, new Set([captionId]));
+    const nextIdx = findNextUnratedIndex(i + 1, new Set([captionId]));
     jumpToIndex(nextIdx);
 
     try {
@@ -506,49 +553,6 @@ export default function RatePage() {
 
   const ratedCount = rows.length - unratedCount;
 
-  const t = useMemo(() => {
-    if (effectiveTheme === "day") {
-      return {
-        text: "#14110f",
-        muted: "rgba(20,17,15,0.58)",
-        cardBg: "rgba(255,255,255,0.72)",
-        cardBorder: "rgba(20,17,15,0.10)",
-        shadow: "0 18px 55px rgba(20,17,15,0.10)",
-        hintBg: "rgba(255,255,255,0.62)",
-        hintBorder: "rgba(20,17,15,0.10)",
-        hintText: "rgba(20,17,15,0.78)",
-        btnBg: "#14110f",
-        btnText: "#fff7e8",
-        ghostBg: "rgba(20,17,15,0.06)",
-        ghostBorder: "rgba(20,17,15,0.14)",
-        ghostText: "#14110f",
-        overlay:
-          "linear-gradient(to top, rgba(20,17,15,0.70), rgba(20,17,15,0.25), rgba(20,17,15,0.70))",
-        spinnerBorder: "3px solid rgba(20,17,15,0.12)",
-        spinnerTop: "#14110f",
-      };
-    }
-    return {
-      text: "#fff",
-      muted: "#aaa",
-      cardBg: "rgba(255,255,255,0.04)",
-      cardBorder: "rgba(255,255,255,0.12)",
-      shadow: "0 18px 55px rgba(0,0,0,0.45)",
-      hintBg: "rgba(0,0,0,0.35)",
-      hintBorder: "rgba(255,255,255,0.16)",
-      hintText: "rgba(255,255,255,0.9)",
-      btnBg: "#fff",
-      btnText: "#111",
-      ghostBg: "rgba(255,255,255,0.12)",
-      ghostBorder: "rgba(255,255,255,0.18)",
-      ghostText: "#fff",
-      overlay:
-        "linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.30), rgba(0,0,0,0.78))",
-      spinnerBorder: "3px solid rgba(255,255,255,0.2)",
-      spinnerTop: "#fff",
-    };
-  }, [effectiveTheme]);
-
   const bgWrapStyle: CSSProperties = {
     minHeight: "100vh",
     position: "relative",
@@ -627,13 +631,38 @@ export default function RatePage() {
             minHeight: "100vh",
           }}
         >
-          <div style={{ textAlign: "center", maxWidth: 520 }}>
-            <h1 style={{ fontSize: 36, fontWeight: 900, marginBottom: 10 }}>
+          <div style={{ textAlign: "center", maxWidth: 560 }}>
+            <h1 style={{ fontSize: 44, fontWeight: 950, marginBottom: 10 }}>
               You’re done 🎉
             </h1>
-            <p style={{ color: t.muted as any, fontSize: 16 }}>
+            <p style={{ color: t.muted as any, fontSize: 18, marginBottom: 22 }}>
               No more captions in this batch.
             </p>
+
+            <button
+              onClick={() => router.push("/upload")}
+              style={{
+                display: "inline-block",
+                padding: "14px 18px",
+                borderRadius: 999,
+                background: t.btnBg,
+                color: t.btnText,
+                fontWeight: 950,
+                border: "none",
+                cursor: "pointer",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+                transition: "background 1000ms ease, color 1000ms ease",
+                minWidth: 320,
+              }}
+            >
+              Want to add more images? →
+            </button>
+
+            <div
+              style={{ marginTop: 18, display: "flex", justifyContent: "center" }}
+            >
+              <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
+            </div>
           </div>
         </div>
       </div>
