@@ -1036,12 +1036,7 @@ export default function RatePage() {
   );
 }
 
-/**
- * SmartImage
- * - Builds candidate URLs from profileId/imageId
- * - Tries multiple extensions (png/jpg/jpeg/webp/gif/heic)
- * - Does NOT reset on parent re-renders (so Space doesn't flash image)
- */
+
 function SmartImage({
   profileId,
   imageId,
@@ -1051,8 +1046,14 @@ function SmartImage({
   imageId: string;
   style?: CSSProperties;
 }) {
-  const [idx, setIdx] = useState(0);
-  const [failed, setFailed] = useState(false);
+  // last known-good image actually shown on screen
+  const [displaySrc, setDisplaySrc] = useState<string>("");
+
+  // src we are currently attempting to load into the DOM <img>
+  const [attemptSrc, setAttemptSrc] = useState<string>("");
+
+  // cancels stale async work when you switch captions quickly
+  const reqRef = useRef(0);
 
   const candidates = useMemo(() => {
     if (!profileId || !imageId) return [];
@@ -1064,18 +1065,52 @@ function SmartImage({
       `${base}.webp`,
       `${base}.gif`,
       `${base}.heic`,
+      `${base}.heif`,
     ];
   }, [profileId, imageId]);
 
-  // reset ONLY when the image identity changes
+  // When the identity changes, we KEEP displaySrc (prevents blank flash),
+  // and we start preloading new candidates. Only swap once loaded.
   useEffect(() => {
-    setIdx(0);
-    setFailed(false);
-  }, [profileId, imageId]);
+    reqRef.current += 1;
+    const reqId = reqRef.current;
 
-  const src = candidates[idx] || "";
+    const preload = (src: string) =>
+      new Promise<boolean>((resolve) => {
+        const img = new Image();
+        img.decoding = "async";
+        img.referrerPolicy = "no-referrer";
+        img.onload = () => resolve(true);
+        img.onerror = () => resolve(false);
+        img.src = src;
+      });
 
-  if (!src || failed) {
+    const run = async () => {
+      setAttemptSrc(""); // do NOT clear displaySrc
+
+      for (const src of candidates) {
+        const ok = await preload(src);
+        if (reqId !== reqRef.current) return; // stale
+
+        if (ok) {
+          // now load it in the DOM <img> (should be instant or near-instant)
+          setAttemptSrc(src);
+          return;
+        }
+      }
+
+      // nothing worked; keep displaySrc (never flash to black)
+      setAttemptSrc("");
+    };
+
+    if (candidates.length) run();
+    else setAttemptSrc("");
+  }, [candidates]);
+
+  const srcToShow = attemptSrc || displaySrc;
+
+  if (!srcToShow) {
+    // first-ever render with nothing loaded yet
     return (
       <div
         style={{
@@ -1090,14 +1125,26 @@ function SmartImage({
 
   return (
     <img
-      src={src}
+      src={srcToShow}
       alt=""
       draggable={false}
-      style={style}
+      referrerPolicy="no-referrer"
+      decoding="async"
+      loading="eager"
+      // when the DOM image finishes, lock it as displaySrc (the new stable image)
+      onLoad={(e) => {
+        const loaded = e.currentTarget.currentSrc || e.currentTarget.src;
+        if (loaded) setDisplaySrc(loaded);
+      }}
+      // if the DOM load fails (rare after preload), just fall back to displaySrc
       onError={() => {
-        const next = idx + 1;
-        if (next < candidates.length) setIdx(next);
-        else setFailed(true);
+        setAttemptSrc("");
+      }}
+      style={{
+        ...style,
+        background: "transparent",
+        backfaceVisibility: "hidden",
+        transform: "translateZ(0)",
       }}
     />
   );
