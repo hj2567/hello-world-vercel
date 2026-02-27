@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabaseClient";
 type Row = {
   id: string;
   content: string;
+  image_id?: string | null;
+  profile_id?: string | null;
+  // In your DB, this join is often null because captions doesn't have images(url) relation
   images?: { url?: string } | null;
 };
 
@@ -212,6 +215,7 @@ export default function RatePage() {
     setLastSeen(current.id);
   }, [current?.id, userId]);
 
+  // theme hydration
   useEffect(() => {
     const saved = (localStorage.getItem("rate_theme") || "auto") as ThemeMode;
     if (saved === "auto" || saved === "day" || saved === "night") {
@@ -284,6 +288,7 @@ export default function RatePage() {
     if (error) throw error;
   };
 
+  // auth
   useEffect(() => {
     const run = async () => {
       const { data } = await supabase.auth.getSession();
@@ -312,6 +317,7 @@ export default function RatePage() {
     run();
   }, []);
 
+  // load captions
   useEffect(() => {
     if (!sessionReady) return;
 
@@ -325,9 +331,11 @@ export default function RatePage() {
       didRestoreRef.current = false;
       restoreCompleteRef.current = false;
 
+      // IMPORTANT: your schema is captions.image_id + captions.profile_id
+      // so select those, not images(url)
       const { data, error } = await supabase
         .from("captions")
-        .select("id, content, images(url)")
+        .select("id, content, image_id, profile_id")
         .not("image_id", "is", null)
         .order("created_datetime_utc", { ascending: false })
         .limit(250);
@@ -341,8 +349,12 @@ export default function RatePage() {
         return;
       }
 
-      const filtered = (data || []).filter((r: any) => r.images?.url) as Row[];
-      setRows(filtered);
+      // Only keep rows that have both ids so SmartImage can build URL
+      const built = (data || []).filter(
+        (r: any) => !!r.image_id && !!r.profile_id
+      ) as Row[];
+
+      setRows(built);
       setUndoStack([]);
       setCaptionPinned(false);
       setLoading(false);
@@ -351,6 +363,7 @@ export default function RatePage() {
     load();
   }, [sessionReady]);
 
+  // load votes for this batch
   useEffect(() => {
     const run = async () => {
       if (!userId) return;
@@ -382,6 +395,7 @@ export default function RatePage() {
     run();
   }, [userId, rows]);
 
+  // restore "last seen" position
   useEffect(() => {
     if (!userId) return;
     if (!rows.length) return;
@@ -516,6 +530,7 @@ export default function RatePage() {
     }
   };
 
+  // keyboard controls (space toggles caption only)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -536,7 +551,9 @@ export default function RatePage() {
         e.preventDefault();
         undo();
       } else if (e.code === "Space") {
+        // prevent page scroll + prevent repeated events
         e.preventDefault();
+        if (e.repeat) return;
         setCaptionPinned((vv) => !vv);
       }
     };
@@ -658,7 +675,6 @@ export default function RatePage() {
               Want to add more images? →
             </button>
 
-            {/* Small secondary logout button */}
             <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
               <button
                 onClick={logout}
@@ -684,7 +700,6 @@ export default function RatePage() {
     );
   }
 
-  const imageUrl = current.images?.url || "";
   const undoDisabled = undoStack.length === 0;
 
   return (
@@ -784,6 +799,7 @@ export default function RatePage() {
           </div>
         </div>
 
+        {/* Slow down toast */}
         <div
           aria-live="polite"
           style={{
@@ -864,7 +880,12 @@ export default function RatePage() {
             onClick={() => setCaptionPinned((v) => !v)}
             title="Hover to preview, Space to toggle caption"
           >
-            <img src={imageUrl} alt="" style={img} />
+            {/* IMPORTANT: no key prop here (prevents remount flashes) */}
+            <SmartImage
+              profileId={(current as any).profile_id || ""}
+              imageId={(current as any).image_id || ""}
+              style={img}
+            />
 
             <div
               className="captionOverlay"
@@ -883,7 +904,7 @@ export default function RatePage() {
                   "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
               }}
             >
-              ↑ / ↓ vote • Z undo
+              ↑ / ↓ vote • Z undo • Space pin
             </div>
           </div>
 
@@ -1012,6 +1033,73 @@ export default function RatePage() {
         `}</style>
       </main>
     </div>
+  );
+}
+
+/**
+ * SmartImage
+ * - Builds candidate URLs from profileId/imageId
+ * - Tries multiple extensions (png/jpg/jpeg/webp/gif/heic)
+ * - Does NOT reset on parent re-renders (so Space doesn't flash image)
+ */
+function SmartImage({
+  profileId,
+  imageId,
+  style,
+}: {
+  profileId: string;
+  imageId: string;
+  style?: CSSProperties;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [failed, setFailed] = useState(false);
+
+  const candidates = useMemo(() => {
+    if (!profileId || !imageId) return [];
+    const base = `https://images.almostcrackd.ai/${profileId}/${imageId}`;
+    return [
+      `${base}.png`,
+      `${base}.jpg`,
+      `${base}.jpeg`,
+      `${base}.webp`,
+      `${base}.gif`,
+      `${base}.heic`,
+    ];
+  }, [profileId, imageId]);
+
+  // reset ONLY when the image identity changes
+  useEffect(() => {
+    setIdx(0);
+    setFailed(false);
+  }, [profileId, imageId]);
+
+  const src = candidates[idx] || "";
+
+  if (!src || failed) {
+    return (
+      <div
+        style={{
+          ...style,
+          width: "100%",
+          height: "100%",
+          background: "#0b0b0b",
+        }}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      draggable={false}
+      style={style}
+      onError={() => {
+        const next = idx + 1;
+        if (next < candidates.length) setIdx(next);
+        else setFailed(true);
+      }}
+    />
   );
 }
 
@@ -1161,6 +1249,9 @@ const img: CSSProperties = {
   objectFit: "contain",
   objectPosition: "center",
   transition: "opacity 180ms ease",
+  // helps avoid some GPU repaint jank
+  backfaceVisibility: "hidden",
+  transform: "translateZ(0)",
 };
 
 const captionText: CSSProperties = {

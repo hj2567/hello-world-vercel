@@ -41,6 +41,7 @@ export default function HomePage() {
       }}
     >
       <BackgroundGallery />
+
       <div
         style={{
           position: "relative",
@@ -110,7 +111,9 @@ function BackgroundGallery() {
   const [spotNext, setSpotNext] = useState<string[]>([]);
   const [spotFlip, setSpotFlip] = useState<boolean[]>([]);
   const poolRef = useRef<string[]>([]);
+  const startedRef = useRef(false);
 
+  // 4x6 grid, but you can change rows/cols if you want
   const spots: Spot[] = useMemo(() => {
     const rows = 4;
     const cols = 6;
@@ -125,7 +128,9 @@ function BackgroundGallery() {
         const top = padY + (r * (100 - 2 * padY)) / (rows - 1);
         const w = 190;
         const rdeg = (idx % 2 === 0 ? -1 : 1) * (4 + (idx % 3));
-        const periodMs = 4200 + (idx % 8) * 350;
+
+        // Faster flicker: ~1.4s–2.5s per tile
+        const periodMs = 1400 + (idx % 8) * 150;
 
         out.push({
           top: `${top}%`,
@@ -142,36 +147,67 @@ function BackgroundGallery() {
     return out;
   }, []);
 
+  const isSupportedUrl = (u: string) => {
+    const s = u.toLowerCase().split("?")[0].split("#")[0];
+    // Browser support depends on platform, but we include heic/heif per your requirement.
+    // If a given browser can't decode it, it'll still fail to render—nothing we can do client-side without conversion.
+    return (
+      s.endsWith(".jpg") ||
+      s.endsWith(".jpeg") ||
+      s.endsWith(".png") ||
+      s.endsWith(".webp") ||
+      s.endsWith(".gif") ||
+      s.endsWith(".heic") ||
+      s.endsWith(".heif")
+    );
+  };
+
   const pickRandom = (exclude?: string) => {
     const arr = poolRef.current;
     if (!arr.length) return "";
-    for (let k = 0; k < 6; k++) {
-      const u = arr[Math.floor(Math.random() * arr.length)];
+    if (arr.length === 1) return arr[0];
+
+    let u = "";
+    for (let k = 0; k < 20; k++) {
+      u = arr[Math.floor(Math.random() * arr.length)];
       if (u && u !== exclude) return u;
     }
-    return arr[0] || "";
+    return arr.find((x) => x !== exclude) || arr[0];
   };
 
+  // Build the pool from `images.url` directly (NOT captions join)
   useEffect(() => {
+    if (startedRef.current) return;
+    startedRef.current = true;
+
     const run = async () => {
       const { data, error } = await supabase
-        .from("captions")
-        .select("images(url)")
-        .not("image_id", "is", null)
+        .from("images")
+        .select("url")
         .order("created_datetime_utc", { ascending: false })
-        .limit(200);
+        .limit(600);
 
-      if (error) return;
+      if (error) {
+        console.log("background images query error:", error);
+        return;
+      }
 
       const urls =
         (data || [])
-          .map((r: any) => r?.images?.url)
-          .filter((u: any) => typeof u === "string" && u.length > 0) || [];
+          .map((r: any) => r?.url)
+          .filter((u: any) => typeof u === "string" && u.length > 0)
+          .filter((u: string) => isSupportedUrl(u)) || [];
 
       const deduped = Array.from(new Set(urls));
+
+      console.log("bg pool raw count:", urls.length);
+      console.log("bg pool deduped count:", deduped.length);
+      console.log("bg sample urls:", deduped.slice(0, 10));
+
       poolRef.current = deduped;
       setPool(deduped);
 
+      // init
       const init = spots.map(() => pickRandom());
       const initNext = init.map((u) => pickRandom(u));
       setSpotUrls(init);
@@ -182,28 +218,47 @@ function BackgroundGallery() {
     run();
   }, [spots]);
 
+  // Preload helper so tiles don't go blank while swapping
+  const preload = (url: string) =>
+    new Promise<void>((resolve) => {
+      if (!url) return resolve();
+      const img = new Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = url;
+    });
+
+  // Per-tile timers: preload next, then flip + swap.
   useEffect(() => {
-    if (!pool.length || !spotUrls.length) return;
+    if (!pool.length || !spotUrls.length || !spotNext.length) return;
 
     const timers: number[] = [];
 
     spots.forEach((s, idx) => {
-      const tick = () => {
+      const tick = async () => {
+        const nextUrl = spotNext[idx] || pickRandom(spotUrls[idx]);
+
+        // preload next before showing it
+        await preload(nextUrl);
+
+        // flip fade
         setSpotFlip((prev) => {
           const copy = [...prev];
           copy[idx] = !copy[idx];
           return copy;
         });
 
+        // commit current -> next
         setSpotUrls((prev) => {
           const copy = [...prev];
-          copy[idx] = spotNext[idx] || prev[idx] || pickRandom();
+          copy[idx] = nextUrl || prev[idx];
           return copy;
         });
 
+        // queue new next
         setSpotNext((prev) => {
           const copy = [...prev];
-          copy[idx] = pickRandom(spotNext[idx]);
+          copy[idx] = pickRandom(nextUrl);
           return copy;
         });
 
@@ -214,20 +269,8 @@ function BackgroundGallery() {
     });
 
     return () => timers.forEach((t) => window.clearTimeout(t));
-  }, [pool.length, spotUrls.length, spots]);
-
-  useEffect(() => {
-    if (!pool.length) return;
-    const t = window.setInterval(() => {
-      const idx = Math.floor(Math.random() * spots.length);
-      setSpotNext((prev) => {
-        const copy = [...prev];
-        copy[idx] = pickRandom(copy[idx]);
-        return copy;
-      });
-    }, 12000);
-    return () => window.clearInterval(t);
-  }, [pool.length, spots.length]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pool.length, spotUrls.length, spotNext.length, spots]);
 
   if (!pool.length) return null;
 
@@ -260,10 +303,12 @@ function BackgroundGallery() {
                 transform: `translate(-50%, -50%) rotate(${s.r}deg)`,
                 filter: "blur(0.7px) saturate(1.05)",
                 boxShadow: "0 40px 120px rgba(0,0,0,0.55)",
-                opacity: 0.22,
+                opacity: 0.24,
                 overflow: "hidden",
+                background: "rgba(255,255,255,0.04)",
               }}
             >
+              {/* Current */}
               <div
                 style={{
                   position: "absolute",
@@ -272,10 +317,11 @@ function BackgroundGallery() {
                   backgroundImage: `url(${a})`,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
-                  transition: "opacity 900ms ease",
+                  transition: "opacity 520ms ease",
                   opacity: spotFlip[idx] ? 0 : 1,
                 }}
               />
+              {/* Next */}
               <div
                 style={{
                   position: "absolute",
@@ -284,7 +330,7 @@ function BackgroundGallery() {
                   backgroundImage: `url(${b})`,
                   backgroundSize: "cover",
                   backgroundPosition: "center",
-                  transition: "opacity 900ms ease",
+                  transition: "opacity 520ms ease",
                   opacity: spotFlip[idx] ? 1 : 0,
                 }}
               />
@@ -293,19 +339,20 @@ function BackgroundGallery() {
         })}
       </div>
 
+      {/* vignette */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           zIndex: 1,
           background:
-            "radial-gradient(circle at center, rgba(0,0,0,0.10), rgba(0,0,0,0.65))",
+            "radial-gradient(circle at center, rgba(0,0,0,0.10), rgba(0,0,0,0.70))",
         }}
       />
 
       <style>{`
         @media (prefers-reduced-motion: reduce) {
-          * { transition: none !important; }
+          * { transition: none !important; animation: none !important; }
         }
       `}</style>
     </div>

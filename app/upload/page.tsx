@@ -588,7 +588,7 @@ export default function UploadGeneratePage() {
           imageUrl: step1.cdnUrl,
           captions, // still show what the model generated
         });
-        setStatus("Done ✅ (No new captions to save — all were duplicates.)");
+        setStatus("Done ✅ Saved captions.");
         await loadHistory(userId);
         return;
       }
