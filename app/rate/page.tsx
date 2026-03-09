@@ -273,37 +273,35 @@ export default function RatePage() {
 
     const ts = nowIso();
 
-    const { data: updatedRows, error: updateErr } = await supabase
+    const { error } = await supabase
       .from("caption_votes")
-      .update({
-        vote_value: v,
-        modified_datetime_utc: ts,
-      })
-      .eq("profile_id", userId)
-      .eq("caption_id", captionId)
-      .select("caption_id");
+      .upsert(
+        {
+          profile_id: userId,
+          caption_id: captionId,
+          vote_value: v,
+          created_datetime_utc: ts,
+          modified_datetime_utc: ts,
+        },
+        {
+          onConflict: "profile_id,caption_id",
+        }
+      );
 
-    if (updateErr) throw updateErr;
+    if (error) throw error;
 
-    if (!updatedRows || updatedRows.length === 0) {
-      const { error: insertErr } = await supabase.from("caption_votes").insert({
-        profile_id: userId,
-        caption_id: captionId,
-        vote_value: v,
-        created_datetime_utc: ts,
-        modified_datetime_utc: ts,
-      });
-      if (insertErr) throw insertErr;
-    }
+    console.log("writing vote", { captionId, vote: v, userId });
   };
 
   const deleteVote = async (captionId: string) => {
     if (!userId) throw new Error("Missing user");
+
     const { error } = await supabase
       .from("caption_votes")
       .delete()
       .eq("profile_id", userId)
       .eq("caption_id", captionId);
+
     if (error) throw error;
   };
 
@@ -597,6 +595,8 @@ export default function RatePage() {
       if (backRow?.id) setLastSeen(backRow.id);
 
       setSaving(false);
+
+      console.log("casting vote", { captionId: current.id, vote: v, userId });
     }
   };
 
