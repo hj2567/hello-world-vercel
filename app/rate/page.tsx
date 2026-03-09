@@ -5,15 +5,6 @@ import type { CSSProperties } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type Row = {
-  id: string;
-  content: string;
-  image_id?: string | null;
-  profile_id?: string | null;
-  // In your DB, this join is often null because captions doesn't have images(url) relation
-  images?: { url?: string } | null;
-};
-
 type VoteValue = -1 | 1;
 
 type UndoAction = {
@@ -30,6 +21,31 @@ type UserInfo = {
 
 type ThemeMode = "auto" | "day" | "night";
 type NavMode = "upload" | "rate";
+
+type CaptionRowRaw = {
+  id: string;
+  content: string | null;
+  image_id?: string | null;
+  profile_id?: string | null;
+};
+
+type ImageMeta = {
+  id: string;
+  exactUrl?: string | null;
+  exactPath?: string | null;
+  ownerProfileId?: string | null;
+  extension?: string | null;
+};
+
+type Row = {
+  id: string;
+  content: string;
+  image_id?: string | null;
+  profile_id?: string | null; // caption author
+  image_meta?: ImageMeta | null;
+};
+
+const IMAGE_HOST = "https://images.almostcrackd.ai";
 
 export default function RatePage() {
   const router = useRouter();
@@ -83,6 +99,10 @@ export default function RatePage() {
   };
 
   const current = rows[i] || null;
+  const currentHasCaption =
+    !!current &&
+    typeof current.content === "string" &&
+    current.content.trim().length > 0;
 
   const effectiveTheme: "day" | "night" = useMemo(() => {
     if (themeMode === "day") return "day";
@@ -138,7 +158,7 @@ export default function RatePage() {
   const pickFirst = (obj: any, keys: string[]) => {
     for (const k of keys) {
       const v = obj?.[k];
-      if (typeof v === "string" && v.trim().length > 0) return v;
+      if (typeof v === "string" && v.trim().length > 0) return v.trim();
     }
     return "";
   };
@@ -200,7 +220,7 @@ export default function RatePage() {
     for (let idx = 0; idx < s; idx++) {
       if (!isRated(rows[idx].id, extraRated)) return idx;
     }
-    return rows.length; // none left
+    return rows.length;
   };
 
   const jumpToIndex = (idx: number) => {
@@ -215,7 +235,6 @@ export default function RatePage() {
     setLastSeen(current.id);
   }, [current?.id, userId]);
 
-  // theme hydration
   useEffect(() => {
     const saved = (localStorage.getItem("rate_theme") || "auto") as ThemeMode;
     if (saved === "auto" || saved === "day" || saved === "night") {
@@ -288,7 +307,6 @@ export default function RatePage() {
     if (error) throw error;
   };
 
-  // auth
   useEffect(() => {
     const run = async () => {
       const { data } = await supabase.auth.getSession();
@@ -317,42 +335,136 @@ export default function RatePage() {
     run();
   }, []);
 
-  // load captions
   useEffect(() => {
     if (!sessionReady) return;
+
+    const normalizeImageMeta = (img: any): ImageMeta => {
+      const exactUrl =
+        pickFirst(img, [
+          "url",
+          "image_url",
+          "public_url",
+          "display_url",
+          "cdn_url",
+          "storage_url",
+          "rendered_url",
+          "processed_url",
+          "signed_url",
+        ]) || null;
+
+      const exactPath =
+        pickFirst(img, [
+          "path",
+          "storage_path",
+          "file_path",
+          "object_path",
+          "key",
+          "object_key",
+          "filename",
+          "file_name",
+          "name",
+        ]) || null;
+
+      const ownerProfileId =
+        pickFirst(img, [
+          "profile_id",
+          "owner_profile_id",
+          "uploader_profile_id",
+          "user_id",
+          "owner_id",
+          "uploaded_by_profile_id",
+        ]) || null;
+
+      let extension =
+        pickFirst(img, [
+          "extension",
+          "file_extension",
+          "ext",
+          "format",
+        ]) || null;
+
+      if (!extension) {
+        const fromUrlOrPath = exactUrl || exactPath || "";
+        const m = fromUrlOrPath.match(/\.([a-zA-Z0-9]+)(?:\?|#|$)/);
+        if (m?.[1]) extension = m[1].toLowerCase();
+      }
+
+      return {
+        id: String(img?.id ?? ""),
+        exactUrl,
+        exactPath,
+        ownerProfileId,
+        extension,
+      };
+    };
 
     const load = async () => {
       setLoading(true);
       setRestoring(true);
-
       setErrMsg("");
       setVotesLoaded(false);
 
       didRestoreRef.current = false;
       restoreCompleteRef.current = false;
 
-      // IMPORTANT: your schema is captions.image_id + captions.profile_id
-      // so select those, not images(url)
-      const { data, error } = await supabase
+      const { data: captionData, error: captionError } = await supabase
         .from("captions")
         .select("id, content, image_id, profile_id")
         .not("image_id", "is", null)
+        .not("content", "is", null)
         .order("created_datetime_utc", { ascending: false })
         .limit(250);
 
-      if (error) {
-        console.error(error);
-        setErrMsg(error.message);
+      if (captionError) {
+        console.error(captionError);
+        setErrMsg(captionError.message);
         setRows([]);
         setLoading(false);
         setRestoring(false);
         return;
       }
 
-      // Only keep rows that have both ids so SmartImage can build URL
-      const built = (data || []).filter(
-        (r: any) => !!r.image_id && !!r.profile_id
-      ) as Row[];
+      const rawCaptions = (captionData || []) as CaptionRowRaw[];
+      const imageIds = Array.from(
+        new Set(
+          rawCaptions
+            .map((r) => r.image_id)
+            .filter((v): v is string => typeof v === "string" && v.length > 0)
+        )
+      );
+
+      let imageMap = new Map<string, ImageMeta>();
+
+      if (imageIds.length) {
+        const { data: imageRows, error: imageError } = await supabase
+          .from("images")
+          .select("*")
+          .in("id", imageIds);
+
+        if (imageError) {
+          console.error("images lookup failed", imageError);
+        } else {
+          for (const img of imageRows || []) {
+            const meta = normalizeImageMeta(img);
+            if (meta.id) imageMap.set(meta.id, meta);
+          }
+        }
+      }
+
+      const built: Row[] = rawCaptions
+        .filter(
+          (r) =>
+            !!r.image_id &&
+            typeof r.content === "string" &&
+            r.content.trim().length > 0
+        )
+        .map((r) => ({
+          id: r.id,
+          content: r.content!.trim(),
+          image_id: r.image_id || null,
+          profile_id: r.profile_id || null,
+          image_meta: r.image_id ? imageMap.get(r.image_id) || null : null,
+        }));
 
       setRows(built);
       setUndoStack([]);
@@ -363,7 +475,6 @@ export default function RatePage() {
     load();
   }, [sessionReady]);
 
-  // load votes for this batch
   useEffect(() => {
     const run = async () => {
       if (!userId) return;
@@ -395,7 +506,6 @@ export default function RatePage() {
     run();
   }, [userId, rows]);
 
-  // restore "last seen" position
   useEffect(() => {
     if (!userId) return;
     if (!rows.length) return;
@@ -530,7 +640,6 @@ export default function RatePage() {
     }
   };
 
-  // keyboard controls (space toggles caption only)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
@@ -551,7 +660,6 @@ export default function RatePage() {
         e.preventDefault();
         undo();
       } else if (e.code === "Space") {
-        // prevent page scroll + prevent repeated events
         e.preventDefault();
         if (e.repeat) return;
         setCaptionPinned((vv) => !vv);
@@ -709,7 +817,6 @@ export default function RatePage() {
       <div style={dayTintStyle} />
 
       <main style={contentStyle}>
-        {/* Top bar */}
         <div style={topBar}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             {userInfo.picture ? (
@@ -799,7 +906,6 @@ export default function RatePage() {
           </div>
         </div>
 
-        {/* Slow down toast */}
         <div
           aria-live="polite"
           style={{
@@ -880,18 +986,23 @@ export default function RatePage() {
             onClick={() => setCaptionPinned((v) => !v)}
             title="Hover to preview, Space to toggle caption"
           >
-            {/* IMPORTANT: no key prop here (prevents remount flashes) */}
             <SmartImage
-              profileId={(current as any).profile_id || ""}
-              imageId={(current as any).image_id || ""}
+              captionProfileId={current.profile_id || ""}
+              imageId={current.image_id || ""}
+              imageMeta={current.image_meta || null}
               style={img}
             />
 
             <div
               className="captionOverlay"
-              style={{ opacity: captionPinned ? 1 : undefined }}
+              style={{
+                opacity: captionPinned ? 1 : 0,
+                pointerEvents: "none",
+              }}
             >
-              <div style={captionText}>{current.content}</div>
+              <div style={captionText}>
+                {currentHasCaption ? current.content : "Caption unavailable"}
+              </div>
             </div>
 
             <div
@@ -959,7 +1070,6 @@ export default function RatePage() {
           </div>
         </div>
 
-        {/* Progress bar */}
         <div
           style={{
             maxWidth: 980,
@@ -1018,59 +1128,102 @@ export default function RatePage() {
           <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
         </div>
 
-        <style>{`
-          .imgWrap .captionOverlay{
-            position:absolute;
-            inset:0;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            opacity:0;
-            transition: opacity 160ms ease;
-            background: ${t.overlay};
-          }
-          .imgWrap:hover .captionOverlay { opacity: 1; }
-        `}</style>
+       <style>{`
+         .imgWrap .captionOverlay{
+           position:absolute;
+           inset:0;
+           display:flex;
+           align-items:center;
+           justify-content:center;
+           opacity:0;
+           pointer-events:none;
+           transition: opacity 160ms ease;
+           background: ${t.overlay};
+         }
+         .imgWrap:hover .captionOverlay { opacity: 1; }
+       `}</style>
       </main>
     </div>
   );
 }
 
+function normalizeToAbsoluteUrl(url: string): string {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith("/")) return `${IMAGE_HOST}${url}`;
+  return `${IMAGE_HOST}/${url}`;
+}
+
+function buildImageCandidates(
+  captionProfileId: string,
+  imageId: string,
+  imageMeta: ImageMeta | null
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+
+  const push = (src?: string | null) => {
+    const value = (src || "").trim();
+    if (!value || seen.has(value)) return;
+    seen.add(value);
+    out.push(value);
+  };
+
+  if (!imageId) return out;
+
+  if (imageMeta?.exactUrl) {
+    push(normalizeToAbsoluteUrl(imageMeta.exactUrl));
+  }
+
+  if (imageMeta?.exactPath) {
+    const path = imageMeta.exactPath.replace(/^\/+/, "");
+    if (/^https?:\/\//i.test(path)) push(path);
+    else push(`${IMAGE_HOST}/${path}`);
+  }
+
+  const ownerFolder = imageMeta?.ownerProfileId || captionProfileId || "";
+  const knownExt = (imageMeta?.extension || "").replace(/^\./, "").toLowerCase();
+
+  if (ownerFolder) {
+    const base = `${IMAGE_HOST}/${ownerFolder}/${imageId}`;
+
+    if (knownExt) push(`${base}.${knownExt}`);
+
+    // Prefer common web-display formats before original phone formats.
+    [
+      "jpeg",
+      "jpg",
+      "png",
+      "webp",
+      "gif",
+      "heic",
+      "heif",
+    ].forEach((ext) => push(`${base}.${ext}`));
+  }
+
+  return out;
+}
 
 function SmartImage({
-  profileId,
+  captionProfileId,
   imageId,
+  imageMeta,
   style,
 }: {
-  profileId: string;
+  captionProfileId: string;
   imageId: string;
+  imageMeta: ImageMeta | null;
   style?: CSSProperties;
 }) {
-  // last known-good image actually shown on screen
   const [displaySrc, setDisplaySrc] = useState<string>("");
-
-  // src we are currently attempting to load into the DOM <img>
   const [attemptSrc, setAttemptSrc] = useState<string>("");
-
-  // cancels stale async work when you switch captions quickly
   const reqRef = useRef(0);
 
-  const candidates = useMemo(() => {
-    if (!profileId || !imageId) return [];
-    const base = `https://images.almostcrackd.ai/${profileId}/${imageId}`;
-    return [
-      `${base}.png`,
-      `${base}.jpg`,
-      `${base}.jpeg`,
-      `${base}.webp`,
-      `${base}.gif`,
-      `${base}.heic`,
-      `${base}.heif`,
-    ];
-  }, [profileId, imageId]);
+  const candidates = useMemo(
+    () => buildImageCandidates(captionProfileId, imageId, imageMeta),
+    [captionProfileId, imageId, imageMeta]
+  );
 
-  // When the identity changes, we KEEP displaySrc (prevents blank flash),
-  // and we start preloading new candidates. Only swap once loaded.
   useEffect(() => {
     reqRef.current += 1;
     const reqId = reqRef.current;
@@ -1086,20 +1239,18 @@ function SmartImage({
       });
 
     const run = async () => {
-      setAttemptSrc(""); // do NOT clear displaySrc
+      setAttemptSrc("");
 
       for (const src of candidates) {
         const ok = await preload(src);
-        if (reqId !== reqRef.current) return; // stale
+        if (reqId !== reqRef.current) return;
 
         if (ok) {
-          // now load it in the DOM <img> (should be instant or near-instant)
           setAttemptSrc(src);
           return;
         }
       }
 
-      // nothing worked; keep displaySrc (never flash to black)
       setAttemptSrc("");
     };
 
@@ -1110,7 +1261,6 @@ function SmartImage({
   const srcToShow = attemptSrc || displaySrc;
 
   if (!srcToShow) {
-    // first-ever render with nothing loaded yet
     return (
       <div
         style={{
@@ -1131,12 +1281,10 @@ function SmartImage({
       referrerPolicy="no-referrer"
       decoding="async"
       loading="eager"
-      // when the DOM image finishes, lock it as displaySrc (the new stable image)
       onLoad={(e) => {
         const loaded = e.currentTarget.currentSrc || e.currentTarget.src;
         if (loaded) setDisplaySrc(loaded);
       }}
-      // if the DOM load fails (rare after preload), just fall back to displaySrc
       onError={() => {
         setAttemptSrc("");
       }}
@@ -1296,7 +1444,6 @@ const img: CSSProperties = {
   objectFit: "contain",
   objectPosition: "center",
   transition: "opacity 180ms ease",
-  // helps avoid some GPU repaint jank
   backfaceVisibility: "hidden",
   transform: "translateZ(0)",
 };
