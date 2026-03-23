@@ -153,8 +153,6 @@ export default function RatePage() {
     };
   }, [effectiveTheme]);
 
-  const nowIso = () => new Date().toISOString();
-
   const pickFirst = (obj: any, keys: string[]) => {
     for (const k of keys) {
       const v = obj?.[k];
@@ -271,26 +269,36 @@ export default function RatePage() {
   const writeVote = async (captionId: string, v: VoteValue) => {
     if (!userId) throw new Error("Missing user");
 
-    const ts = nowIso();
-
-    const { error } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("caption_votes")
-      .upsert(
-        {
-          profile_id: userId,
-          caption_id: captionId,
-          vote_value: v,
-          created_datetime_utc: ts,
-          modified_datetime_utc: ts,
-        },
-        {
-          onConflict: "profile_id,caption_id",
-        }
-      );
+      .update({
+        vote_value: v,
+        modified_by_user_id: userId,
+      })
+      .eq("profile_id", userId)
+      .eq("caption_id", captionId)
+      .select("caption_id");
 
-    if (error) throw error;
+    if (updateError) throw updateError;
 
-    console.log("writing vote", { captionId, vote: v, userId });
+    if (updatedRows && updatedRows.length > 0) {
+      console.log("writing vote", { captionId, vote: v, userId, mode: "update" });
+      return;
+    }
+
+    const { error: insertError } = await supabase
+      .from("caption_votes")
+      .insert({
+        profile_id: userId,
+        caption_id: captionId,
+        vote_value: v,
+        created_by_user_id: userId,
+        modified_by_user_id: userId,
+      });
+
+    if (insertError) throw insertError;
+
+    console.log("writing vote", { captionId, vote: v, userId, mode: "insert" });
   };
 
   const deleteVote = async (captionId: string) => {
@@ -374,12 +382,7 @@ export default function RatePage() {
         ]) || null;
 
       let extension =
-        pickFirst(img, [
-          "extension",
-          "file_extension",
-          "ext",
-          "format",
-        ]) || null;
+        pickFirst(img, ["extension", "file_extension", "ext", "format"]) || null;
 
       if (!extension) {
         const fromUrlOrPath = exactUrl || exactPath || "";
@@ -431,7 +434,7 @@ export default function RatePage() {
         )
       );
 
-      let imageMap = new Map<string, ImageMeta>();
+      const imageMap = new Map<string, ImageMeta>();
 
       if (imageIds.length) {
         const { data: imageRows, error: imageError } = await supabase
@@ -1128,7 +1131,7 @@ export default function RatePage() {
           <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
         </div>
 
-       <style>{`
+        <style>{`
          .imgWrap .captionOverlay{
            position:absolute;
            inset:0;
@@ -1189,16 +1192,9 @@ function buildImageCandidates(
 
     if (knownExt) push(`${base}.${knownExt}`);
 
-    // Prefer common web-display formats before original phone formats.
-    [
-      "jpeg",
-      "jpg",
-      "png",
-      "webp",
-      "gif",
-      "heic",
-      "heif",
-    ].forEach((ext) => push(`${base}.${ext}`));
+    ["jpeg", "jpg", "png", "webp", "gif", "heic", "heif"].forEach((ext) =>
+      push(`${base}.${ext}`)
+    );
   }
 
   return out;

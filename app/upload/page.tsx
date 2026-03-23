@@ -218,8 +218,6 @@ export default function UploadGeneratePage() {
     transition: mounted ? "color 1000ms ease" : "none",
   };
 
-  const nowIso = () => new Date().toISOString();
-
   const pickFirst = (obj: any, keys: string[]) => {
     for (const k of keys) {
       const v = obj?.[k];
@@ -291,7 +289,6 @@ export default function UploadGeneratePage() {
     router.push("/");
   };
 
-
   const splitMaybeList = (s: string) => {
     const raw = (s || "").trim();
     if (!raw) return [];
@@ -305,14 +302,13 @@ export default function UploadGeneratePage() {
         .split(/\r?\n+/)
         .map((line) =>
           line
-            .replace(/^\s*\d+[\.\)]\s+/, "") // "1. " or "1) "
-            .replace(/^\s*[-•]\s+/, "") // "- " or "• "
+            .replace(/^\s*\d+[\.\)]\s+/, "")
+            .replace(/^\s*[-•]\s+/, "")
             .trim()
         )
         .filter(Boolean);
     }
 
-    // Sometimes models return "a; b; c" as a single string.
     if (raw.includes(";") && raw.split(";").length >= 3) {
       return raw
         .split(";")
@@ -336,7 +332,6 @@ export default function UploadGeneratePage() {
     return out;
   };
 
-
   const uniqCaptions = (arr: string[], limit = 5) => {
     const seen = new Set<string>();
     const out: string[] = [];
@@ -349,7 +344,7 @@ export default function UploadGeneratePage() {
         .replace(/\s+/g, " ")
         .replace(/[“”]/g, '"')
         .replace(/[’]/g, "'")
-        .replace(/[.!?]+$/g, ""); // drop trailing punctuation
+        .replace(/[.!?]+$/g, "");
 
       if (seen.has(key)) continue;
       seen.add(key);
@@ -413,7 +408,6 @@ export default function UploadGeneratePage() {
       const g = map.get(imageId)!;
       if (!g.created_datetime_utc) g.created_datetime_utc = created;
 
-      // Use same normalization as uniqCaptions so history doesn't show duplicates either
       const key = content
         .trim()
         .toLowerCase()
@@ -536,9 +530,6 @@ export default function UploadGeneratePage() {
 
       setStatus("Saving captions to Supabase…");
 
-      const ts = nowIso();
-
-      // ✅ Avoid inserting duplicates that already exist for this image_id + profile_id
       const { data: existing, error: existErr } = await supabase
         .from("captions")
         .select("content")
@@ -578,15 +569,15 @@ export default function UploadGeneratePage() {
           content: c,
           is_public: false,
           is_featured: false,
-          created_datetime_utc: ts,
-          modified_datetime_utc: ts,
+          created_by_user_id: userId,
+          modified_by_user_id: userId,
         }));
 
       if (inserts.length === 0) {
         setLastResult({
           imageId: step3.imageId,
           imageUrl: step1.cdnUrl,
-          captions, // still show what the model generated
+          captions,
         });
         setStatus("Done ✅ Saved captions.");
         await loadHistory(userId);
@@ -695,7 +686,6 @@ export default function UploadGeneratePage() {
             </div>
           </div>
 
-          {/* ✅ RIGHT SIDE: MATCH Rate sizing */}
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <ModeToggle value={navMode} onChange={onNavChange} t={t} />
 
@@ -911,7 +901,7 @@ export default function UploadGeneratePage() {
                           color: t.muted as any,
                         }}
                       >
-                        {fmtLocal(nowIso())}
+                        {fmtLocal(new Date().toISOString())}
                       </div>
                     </div>
 
@@ -1079,7 +1069,6 @@ export default function UploadGeneratePage() {
   );
 }
 
-/** ✅ EXACT same sizing as Rate page */
 function ModeToggle({
   value,
   onChange,
