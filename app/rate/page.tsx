@@ -88,6 +88,10 @@ export default function RatePage() {
   const [themeHydrated, setThemeHydrated] = useState(false);
 
   const [navMode, setNavMode] = useState<NavMode>("rate");
+
+  const [showIntroLock, setShowIntroLock] = useState(false);
+  const [introHydrated, setIntroHydrated] = useState(false);
+
   useEffect(() => {
     if ((pathname || "").startsWith("/rate")) setNavMode("rate");
     else setNavMode("upload");
@@ -130,6 +134,9 @@ export default function RatePage() {
           "linear-gradient(to top, rgba(20,17,15,0.70), rgba(20,17,15,0.25), rgba(20,17,15,0.70))",
         spinnerBorder: "3px solid rgba(20,17,15,0.12)",
         spinnerTop: "#14110f",
+        introBackdrop: "rgba(243, 239, 231, 0.62)",
+        introCardBg: "rgba(255,255,255,0.78)",
+        introSubtleBg: "rgba(20,17,15,0.04)",
       };
     }
     return {
@@ -150,6 +157,9 @@ export default function RatePage() {
         "linear-gradient(to top, rgba(0,0,0,0.78), rgba(0,0,0,0.30), rgba(0,0,0,0.78))",
       spinnerBorder: "3px solid rgba(255,255,255,0.2)",
       spinnerTop: "#fff",
+      introBackdrop: "rgba(0,0,0,0.50)",
+      introCardBg: "rgba(18,18,18,0.82)",
+      introSubtleBg: "rgba(255,255,255,0.05)",
     };
   }, [effectiveTheme]);
 
@@ -187,6 +197,7 @@ export default function RatePage() {
   };
 
   const lastSeenKey = (uid: string) => `rate_last_seen_caption_id:${uid}`;
+  const introDismissedKey = (uid: string) => `rate_intro_dismissed:${uid}`;
 
   const setLastSeen = (captionId: string) => {
     if (!userId) return;
@@ -266,6 +277,26 @@ export default function RatePage() {
     return () => window.clearTimeout(tmr);
   }, [showSlow, slowMsg]);
 
+  useEffect(() => {
+    if (!userId) return;
+    try {
+      const dismissed = localStorage.getItem(introDismissedKey(userId)) === "1";
+      setShowIntroLock(!dismissed);
+    } catch {
+      setShowIntroLock(true);
+    } finally {
+      setIntroHydrated(true);
+    }
+  }, [userId]);
+
+  const dismissIntro = () => {
+    setShowIntroLock(false);
+    if (!userId) return;
+    try {
+      localStorage.setItem(introDismissedKey(userId), "1");
+    } catch {}
+  };
+
   const writeVote = async (captionId: string, v: VoteValue) => {
     if (!userId) throw new Error("Missing user");
 
@@ -282,7 +313,6 @@ export default function RatePage() {
     if (updateError) throw updateError;
 
     if (updatedRows && updatedRows.length > 0) {
-      console.log("writing vote", { captionId, vote: v, userId, mode: "update" });
       return;
     }
 
@@ -297,8 +327,6 @@ export default function RatePage() {
       });
 
     if (insertError) throw insertError;
-
-    console.log("writing vote", { captionId, vote: v, userId, mode: "insert" });
   };
 
   const deleteVote = async (captionId: string) => {
@@ -547,7 +575,7 @@ export default function RatePage() {
 
   const castVote = async (v: VoteValue) => {
     if (!current || !userId) return;
-    if (saving) return;
+    if (saving || showIntroLock) return;
 
     const now = Date.now();
     if (now - lastVoteAt < MIN_VOTE_GAP_MS) {
@@ -598,14 +626,12 @@ export default function RatePage() {
       if (backRow?.id) setLastSeen(backRow.id);
 
       setSaving(false);
-
-      console.log("casting vote", { captionId: current.id, vote: v, userId });
     }
   };
 
   const undo = async () => {
     if (!userId) return;
-    if (saving) return;
+    if (saving || showIntroLock) return;
 
     const last = undoStack[undoStack.length - 1];
     if (!last) return;
@@ -645,6 +671,8 @@ export default function RatePage() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (showIntroLock) return;
+
       const el = e.target as HTMLElement | null;
       const isTyping =
         el &&
@@ -666,12 +694,15 @@ export default function RatePage() {
         e.preventDefault();
         if (e.repeat) return;
         setCaptionPinned((vv) => !vv);
+      } else if (e.code === "Enter" && showIntroLock) {
+        e.preventDefault();
+        dismissIntro();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saving, current, userId, i, undoStack, voteMap, rows, lastVoteAt]);
+  }, [saving, current, userId, i, undoStack, voteMap, rows, lastVoteAt, showIntroLock]);
 
   const unratedCount = useMemo(() => {
     let c = 0;
@@ -723,7 +754,7 @@ export default function RatePage() {
     transition: "color 1000ms ease",
   };
 
-  if (loading || restoring) {
+  if (loading || restoring || !introHydrated) {
     return (
       <div style={bgWrapStyle}>
         <div style={nightLayerStyle} />
@@ -820,331 +851,495 @@ export default function RatePage() {
       <div style={dayTintStyle} />
 
       <main style={contentStyle}>
-        <div style={topBar}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            {userInfo.picture ? (
-              <img
-                src={userInfo.picture}
-                alt=""
-                referrerPolicy="no-referrer"
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  objectFit: "cover",
-                  border: `1px solid ${t.cardBorder}`,
-                  transition: "border-color 1000ms ease",
-                }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 999,
-                  background:
-                    effectiveTheme === "day"
-                      ? "rgba(20,17,15,0.06)"
-                      : "rgba(255,255,255,0.10)",
-                  border: `1px solid ${t.cardBorder}`,
-                  transition:
-                    "background 1000ms ease, border-color 1000ms ease",
-                }}
-              />
-            )}
+        <div
+          style={{
+            filter: showIntroLock ? "blur(10px)" : "none",
+            transform: showIntroLock ? "scale(0.995)" : "scale(1)",
+            opacity: showIntroLock ? 0.9 : 1,
+            transition: "filter 220ms ease, opacity 220ms ease, transform 220ms ease",
+            pointerEvents: showIntroLock ? "none" : "auto",
+            userSelect: showIntroLock ? "none" : "auto",
+          }}
+          aria-hidden={showIntroLock}
+        >
+          <div style={topBar}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {userInfo.picture ? (
+                <img
+                  src={userInfo.picture}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 999,
+                    objectFit: "cover",
+                    border: `1px solid ${t.cardBorder}`,
+                    transition: "border-color 1000ms ease",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 999,
+                    background:
+                      effectiveTheme === "day"
+                        ? "rgba(20,17,15,0.06)"
+                        : "rgba(255,255,255,0.10)",
+                    border: `1px solid ${t.cardBorder}`,
+                    transition:
+                      "background 1000ms ease, border-color 1000ms ease",
+                  }}
+                />
+              )}
 
-            <div>
-              <div
+              <div>
+                <div
+                  style={{
+                    fontWeight: 950,
+                    fontSize: 20,
+                    letterSpacing: "-0.02em",
+                  }}
+                >
+                  Hi, {userInfo.name || "friend"}!
+                </div>
+                <div
+                  style={{
+                    color: t.muted as any,
+                    fontSize: 13,
+                    transition: "color 1000ms ease",
+                  }}
+                >
+                  {userInfo.email || ""}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ textAlign: "right" }}>
+                <div
+                  style={{
+                    color: t.muted as any,
+                    fontSize: 13,
+                    fontWeight: 800,
+                    transition: "color 1000ms ease",
+                  }}
+                >
+                  {ratedCount} / {rows.length}
+                </div>
+              </div>
+
+              <ModeToggle value={navMode} onChange={onNavChange} t={t} />
+
+              <button
+                onClick={logout}
                 style={{
-                  fontWeight: 950,
-                  fontSize: 20,
-                  letterSpacing: "-0.02em",
+                  padding: "10px 14px",
+                  borderRadius: 999,
+                  background: t.btnBg,
+                  color: t.btnText,
+                  fontWeight: 900,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background 1000ms ease, color 1000ms ease",
                 }}
               >
-                Hi, {userInfo.name || "friend"}!
-              </div>
-              <div
-                style={{
-                  color: t.muted as any,
-                  fontSize: 13,
-                  transition: "color 1000ms ease",
-                }}
-              >
-                {userInfo.email || ""}
-              </div>
+                Logout
+              </button>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ textAlign: "right" }}>
-              <div
-                style={{
-                  color: t.muted as any,
-                  fontSize: 13,
-                  fontWeight: 800,
-                  transition: "color 1000ms ease",
-                }}
-              >
-                {ratedCount} / {rows.length}
-              </div>
-            </div>
-
-            <ModeToggle value={navMode} onChange={onNavChange} t={t} />
-
-            <button
-              onClick={logout}
+          <div
+            aria-live="polite"
+            style={{
+              position: "fixed",
+              top: 16,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 9999,
+              pointerEvents: "none",
+              opacity: showSlow ? 1 : 0,
+              transition: "opacity 160ms ease",
+            }}
+          >
+            <div
               style={{
                 padding: "10px 14px",
                 borderRadius: 999,
-                background: t.btnBg,
-                color: t.btnText,
+                background:
+                  effectiveTheme === "day"
+                    ? "rgba(20,17,15,0.75)"
+                    : "rgba(0,0,0,0.55)",
+                border:
+                  effectiveTheme === "day"
+                    ? "1px solid rgba(255,255,255,0.24)"
+                    : "1px solid rgba(255,255,255,0.18)",
+                color: "#fff",
                 fontWeight: 900,
-                border: "none",
-                cursor: "pointer",
-                transition: "background 1000ms ease, color 1000ms ease",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                boxShadow: "0 16px 60px rgba(0,0,0,0.25)",
               }}
             >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        <div
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            top: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 9999,
-            pointerEvents: "none",
-            opacity: showSlow ? 1 : 0,
-            transition: "opacity 160ms ease",
-          }}
-        >
-          <div
-            style={{
-              padding: "10px 14px",
-              borderRadius: 999,
-              background:
-                effectiveTheme === "day"
-                  ? "rgba(20,17,15,0.75)"
-                  : "rgba(0,0,0,0.55)",
-              border:
-                effectiveTheme === "day"
-                  ? "1px solid rgba(255,255,255,0.24)"
-                  : "1px solid rgba(255,255,255,0.18)",
-              color: "#fff",
-              fontWeight: 900,
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
-              boxShadow: "0 16px 60px rgba(0,0,0,0.25)",
-            }}
-          >
-            {slowMsg || "Slow down 🙂"}
-          </div>
-        </div>
-
-        {errMsg ? (
-          <div
-            style={{
-              maxWidth: 980,
-              margin: "0 auto 14px",
-              padding: "12px 14px",
-              borderRadius: 14,
-              background:
-                effectiveTheme === "day"
-                  ? "rgba(255,80,80,0.10)"
-                  : "rgba(255,80,80,0.12)",
-              border:
-                effectiveTheme === "day"
-                  ? "1px solid rgba(255,80,80,0.22)"
-                  : "1px solid rgba(255,80,80,0.28)",
-              color: effectiveTheme === "day" ? "#7a1f1f" : "#ffd2d2",
-              fontWeight: 800,
-              transition:
-                "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
-            }}
-          >
-            Vote failed: {errMsg}
-          </div>
-        ) : null}
-
-        <div
-          style={{
-            maxWidth: 980,
-            margin: "0 auto",
-            borderRadius: 26,
-            overflow: "hidden",
-            boxShadow: t.shadow,
-            border: `1px solid ${t.cardBorder}`,
-            background: t.cardBg,
-            transition:
-              "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease",
-          }}
-        >
-          <div
-            style={imgWrap}
-            className="imgWrap"
-            onClick={() => setCaptionPinned((v) => !v)}
-            title="Hover to preview, Space to toggle caption"
-          >
-            <SmartImage
-              captionProfileId={current.profile_id || ""}
-              imageId={current.image_id || ""}
-              imageMeta={current.image_meta || null}
-              style={img}
-            />
-
-            <div
-              className="captionOverlay"
-              style={{
-                opacity: captionPinned ? 1 : 0,
-                pointerEvents: "none",
-              }}
-            >
-              <div style={captionText}>
-                {currentHasCaption ? current.content : "Caption unavailable"}
-              </div>
+              {slowMsg || "Slow down 🙂"}
             </div>
+          </div>
 
+          {errMsg ? (
             <div
               style={{
-                ...hintPill,
-                background: t.hintBg,
-                border: `1px solid ${t.hintBorder}`,
-                color: t.hintText,
+                maxWidth: 980,
+                margin: "0 auto 14px",
+                padding: "12px 14px",
+                borderRadius: 14,
+                background:
+                  effectiveTheme === "day"
+                    ? "rgba(255,80,80,0.10)"
+                    : "rgba(255,80,80,0.12)",
+                border:
+                  effectiveTheme === "day"
+                    ? "1px solid rgba(255,80,80,0.22)"
+                    : "1px solid rgba(255,80,80,0.28)",
+                color: effectiveTheme === "day" ? "#7a1f1f" : "#ffd2d2",
+                fontWeight: 800,
                 transition:
                   "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
               }}
             >
-              ↑ / ↓ vote • Z undo • Space pin
+              Vote failed: {errMsg}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              maxWidth: 980,
+              margin: "0 auto",
+              borderRadius: 26,
+              overflow: "hidden",
+              boxShadow: t.shadow,
+              border: `1px solid ${t.cardBorder}`,
+              background: t.cardBg,
+              transition:
+                "background 1000ms ease, border-color 1000ms ease, box-shadow 1000ms ease",
+            }}
+          >
+            <div
+              style={imgWrap}
+              className="imgWrap"
+              onClick={() => setCaptionPinned((v) => !v)}
+              title="Hover to preview, Space to toggle caption"
+            >
+              <SmartImage
+                captionProfileId={current.profile_id || ""}
+                imageId={current.image_id || ""}
+                imageMeta={current.image_meta || null}
+                style={img}
+              />
+
+              <div
+                className="captionOverlay"
+                style={{
+                  opacity: captionPinned ? 1 : 0,
+                  pointerEvents: "none",
+                }}
+              >
+                <div style={captionText}>
+                  {currentHasCaption ? current.content : "Caption unavailable"}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  ...hintPill,
+                  background: t.hintBg,
+                  border: `1px solid ${t.hintBorder}`,
+                  color: t.hintText,
+                  transition:
+                    "background 1000ms ease, color 1000ms ease, border-color 1000ms ease",
+                }}
+              >
+                ↑ / ↓ vote • Z undo • Space pin
+              </div>
+            </div>
+
+            <div style={controls}>
+              <button
+                onClick={() => castVote(1)}
+                disabled={saving}
+                style={{
+                  ...solidBtn,
+                  background: t.btnBg,
+                  color: t.btnText,
+                  opacity: saving ? 0.75 : 1,
+                  transition:
+                    "background 1000ms ease, color 1000ms ease, opacity 120ms ease",
+                }}
+              >
+                👍 Upvote
+              </button>
+
+              <button
+                onClick={() => castVote(-1)}
+                disabled={saving}
+                style={{
+                  ...solidBtn,
+                  background: t.btnBg,
+                  color: t.btnText,
+                  opacity: saving ? 0.75 : 1,
+                  transition:
+                    "background 1000ms ease, color 1000ms ease, opacity 120ms ease",
+                }}
+              >
+                👎 Downvote
+              </button>
+
+              <button
+                onClick={undo}
+                disabled={undoDisabled}
+                style={{
+                  ...ghostBtn,
+                  background: t.ghostBg,
+                  border: `1px solid ${t.ghostBorder}`,
+                  color: t.ghostText,
+                  filter: undoDisabled ? "grayscale(1)" : "none",
+                  opacity: undoDisabled ? 0.55 : 1,
+                  pointerEvents: undoDisabled ? "none" : "auto",
+                  transition:
+                    "background 1000ms ease, color 1000ms ease, border-color 1000ms ease, opacity 120ms ease",
+                }}
+              >
+                ↩️ Undo
+              </button>
             </div>
           </div>
 
-          <div style={controls}>
-            <button
-              onClick={() => castVote(1)}
-              disabled={saving}
-              style={{
-                ...solidBtn,
-                background: t.btnBg,
-                color: t.btnText,
-                opacity: saving ? 0.75 : 1,
-                transition:
-                  "background 1000ms ease, color 1000ms ease, opacity 120ms ease",
-              }}
-            >
-              👍 Upvote
-            </button>
-
-            <button
-              onClick={() => castVote(-1)}
-              disabled={saving}
-              style={{
-                ...solidBtn,
-                background: t.btnBg,
-                color: t.btnText,
-                opacity: saving ? 0.75 : 1,
-                transition:
-                  "background 1000ms ease, color 1000ms ease, opacity 120ms ease",
-              }}
-            >
-              👎 Downvote
-            </button>
-
-            <button
-              onClick={undo}
-              disabled={undoDisabled}
-              style={{
-                ...ghostBtn,
-                background: t.ghostBg,
-                border: `1px solid ${t.ghostBorder}`,
-                color: t.ghostText,
-                filter: undoDisabled ? "grayscale(1)" : "none",
-                opacity: undoDisabled ? 0.55 : 1,
-                pointerEvents: undoDisabled ? "none" : "auto",
-                transition:
-                  "background 1000ms ease, color 1000ms ease, border-color 1000ms ease, opacity 120ms ease",
-              }}
-            >
-              ↩️ Undo
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            maxWidth: 980,
-            margin: "18px auto 0",
-            padding: "0 18px",
-          }}
-        >
           <div
             style={{
-              height: 4,
-              width: "100%",
-              borderRadius: 999,
-              background:
-                effectiveTheme === "day"
-                  ? "rgba(20,17,15,0.08)"
-                  : "rgba(255,255,255,0.12)",
-              overflow: "hidden",
-              transition: "background 1000ms ease",
+              maxWidth: 980,
+              margin: "18px auto 0",
+              padding: "0 18px",
             }}
           >
             <div
               style={{
-                height: "100%",
-                width: `${rows.length ? (ratedCount / rows.length) * 100 : 0}%`,
-                background: t.btnBg,
+                height: 4,
+                width: "100%",
                 borderRadius: 999,
-                transition: "width 300ms ease",
+                background:
+                  effectiveTheme === "day"
+                    ? "rgba(20,17,15,0.08)"
+                    : "rgba(255,255,255,0.12)",
+                overflow: "hidden",
+                transition: "background 1000ms ease",
               }}
-            />
+            >
+              <div
+                style={{
+                  height: "100%",
+                  width: `${rows.length ? (ratedCount / rows.length) * 100 : 0}%`,
+                  background: t.btnBg,
+                  borderRadius: 999,
+                  transition: "width 300ms ease",
+                }}
+              />
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 26,
+              padding: "0 16px 16px",
+              textAlign: "center",
+              fontSize: 14,
+              fontWeight: 800,
+              color: t.muted as any,
+              transition: "color 1000ms ease",
+            }}
+          >
+            Keyboard shortcuts: ↑ upvote • ↓ downvote • Z undo • Space pin caption
+          </div>
+
+          <div
+            style={{
+              maxWidth: 980,
+              margin: "0 auto",
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
           </div>
         </div>
 
-        <div
-          style={{
-            marginTop: 26,
-            padding: "0 16px 16px",
-            textAlign: "center",
-            fontSize: 14,
-            fontWeight: 800,
-            color: t.muted,
-            letterSpacing: "0.01em",
-            transition: "color 1000ms ease",
-          }}
-        >
-          Hover the image to preview • Press Space to keep the caption on
-        </div>
+        {showIntroLock ? (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 10000,
+              background: t.introBackdrop,
+              backdropFilter: "blur(4px)",
+              WebkitBackdropFilter: "blur(4px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="rate-intro-title"
+              style={{
+                width: "100%",
+                maxWidth: 720,
+                borderRadius: 28,
+                background: t.introCardBg,
+                border: `1px solid ${t.cardBorder}`,
+                boxShadow: "0 30px 100px rgba(0,0,0,0.28)",
+                padding: 28,
+                color: t.text,
+              }}
+            >
+              <div
+                id="rate-intro-title"
+                style={{
+                  fontSize: 32,
+                  fontWeight: 950,
+                  letterSpacing: "-0.03em",
+                  marginBottom: 10,
+                }}
+              >
+                How rating works
+              </div>
 
-        <div
-          style={{
-            maxWidth: 980,
-            margin: "4px auto 0",
-            display: "flex",
-            justifyContent: "center",
-          }}
-        >
-          <ThemeToggle value={themeMode} onChange={setThemeMode} t={t} />
-        </div>
+              <div
+                style={{
+                  fontSize: 16,
+                  lineHeight: 1.6,
+                  color: t.muted as any,
+                  marginBottom: 20,
+                }}
+              >
+                Look at the image, decide whether the caption works, and vote. Once
+                you dismiss this screen, the page unlocks and you can start rating
+                immediately. Press Space to lock the caption, or hover over the image
+                to preview the caption.
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 12,
+                  marginBottom: 18,
+                }}
+              >
+                <IntroStep
+                  index="1"
+                  title="Look"
+                  body="Check the image and judge the caption in context."
+                  t={t}
+                />
+                <IntroStep
+                  index="2"
+                  title="Vote"
+                  body="Use Upvote if it works well, or Downvote if it doesn’t."
+                  t={t}
+                />
+                <IntroStep
+                  index="3"
+                  title="Undo"
+                  body="Made a mistake? Use Undo to reverse your last vote."
+                  t={t}
+                />
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 18,
+                  background: t.introSubtleBg,
+                  border: `1px solid ${t.cardBorder}`,
+                  padding: 16,
+                  marginBottom: 22,
+                }}
+              >
+                <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 8 }}>
+                  Keyboard shortcuts
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    color: t.muted as any,
+                    fontSize: 13,
+                    fontWeight: 800,
+                  }}
+                >
+                  <KeyPill text="↑ Upvote" t={t} />
+                  <KeyPill text="↓ Downvote" t={t} />
+                  <KeyPill text="Z Undo" t={t} />
+                  <KeyPill text="Space Pin caption" t={t} />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    color: t.muted as any,
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}
+                >
+                  You only need to dismiss this once on this browser.
+                </div>
+
+                <button
+                  onClick={dismissIntro}
+                  style={{
+                    padding: "14px 20px",
+                    borderRadius: 999,
+                    border: "none",
+                    cursor: "pointer",
+                    background: t.btnBg,
+                    color: t.btnText,
+                    fontWeight: 950,
+                    fontSize: 14,
+                    boxShadow: "0 14px 40px rgba(0,0,0,0.18)",
+                  }}
+                >
+                  Dismiss and start rating
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <style>{`
-         .imgWrap .captionOverlay{
-           position:absolute;
-           inset:0;
-           display:flex;
-           align-items:center;
-           justify-content:center;
-           opacity:0;
-           pointer-events:none;
-           transition: opacity 160ms ease;
-           background: ${t.overlay};
-         }
-         .imgWrap:hover .captionOverlay { opacity: 1; }
-       `}</style>
+          .imgWrap .captionOverlay{
+            position:absolute;
+            inset:0;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            opacity:0;
+            pointer-events:none;
+            transition: opacity 160ms ease;
+            background: ${t.overlay};
+          }
+          .imgWrap:hover .captionOverlay { opacity: 1; }
+        `}</style>
       </main>
     </div>
   );
@@ -1179,9 +1374,7 @@ function buildImageCandidates(
   }
 
   if (imageMeta?.exactPath) {
-    const path = imageMeta.exactPath.replace(/^\/+/, "");
-    if (/^https?:\/\//i.test(path)) push(path);
-    else push(`${IMAGE_HOST}/${path}`);
+    push(normalizeToAbsoluteUrl(imageMeta.exactPath));
   }
 
   const ownerFolder = imageMeta?.ownerProfileId || captionProfileId || "";
@@ -1240,7 +1433,6 @@ function SmartImage({
       for (const src of candidates) {
         const ok = await preload(src);
         if (reqId !== reqRef.current) return;
-
         if (ok) {
           setAttemptSrc(src);
           return;
@@ -1417,6 +1609,69 @@ function SigningScreen({ subtitle, t }: { subtitle: string; t: any }) {
   );
 }
 
+function IntroStep({
+  index,
+  title,
+  body,
+  t,
+}: {
+  index: string;
+  title: string;
+  body: string;
+  t: any;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: 18,
+        padding: 16,
+        background: t.introSubtleBg,
+        border: `1px solid ${t.cardBorder}`,
+      }}
+    >
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          minWidth: 28,
+          height: 28,
+          borderRadius: 999,
+          background: t.btnBg,
+          color: t.btnText,
+          fontWeight: 950,
+          fontSize: 13,
+          marginBottom: 10,
+        }}
+      >
+        {index}
+      </div>
+      <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 6 }}>{title}</div>
+      <div style={{ color: t.muted as any, fontSize: 13, lineHeight: 1.5 }}>
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function KeyPill({ text, t }: { text: string; t: any }) {
+  return (
+    <span
+      style={{
+        padding: "8px 12px",
+        borderRadius: 999,
+        background: t.ghostBg,
+        border: `1px solid ${t.ghostBorder}`,
+        color: t.ghostText,
+        display: "inline-flex",
+        alignItems: "center",
+      }}
+    >
+      {text}
+    </span>
+  );
+}
+
 const topBar: CSSProperties = {
   maxWidth: 980,
   margin: "0 auto 18px",
@@ -1424,6 +1679,7 @@ const topBar: CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
+  flexWrap: "wrap",
 };
 
 const imgWrap: CSSProperties = {
@@ -1465,6 +1721,7 @@ const hintPill: CSSProperties = {
   fontWeight: 850,
   fontSize: 12,
   backdropFilter: "blur(10px)",
+  WebkitBackdropFilter: "blur(10px)",
 };
 
 const controls: CSSProperties = {
