@@ -497,7 +497,6 @@ export default function RatePage() {
 
       setRows(built);
       setUndoStack([]);
-      setCaptionPinned(false);
       setLoading(false);
     };
 
@@ -656,7 +655,6 @@ export default function RatePage() {
 
       setUndoStack((s) => s.slice(0, -1));
       setI(index_before);
-      setCaptionPinned(false);
 
       const backRow = rows[index_before];
       if (backRow?.id) setLastSeen(backRow.id);
