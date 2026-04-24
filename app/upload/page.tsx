@@ -526,15 +526,30 @@ export default function UploadGeneratePage() {
       }
 
       setStatus("Step 4/4: Generating captions…");
-      const step4 = await apiPost<any>("/pipeline/generate-captions", {
-        imageId: step3.imageId,
-      });
 
-      const normalized = normalizeCaptions(
-        Array.isArray(step4) ? (step4 as ApiCaption[]) : step4?.captions || []
-      );
+      let collectedCaptions: string[] = [];
 
-      const captions = uniqCaptions(normalized, 5);
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        const step4 = await apiPost<any>("/pipeline/generate-captions", {
+          imageId: step3.imageId,
+        });
+
+        const normalized = normalizeCaptions(
+          Array.isArray(step4) ? (step4 as ApiCaption[]) : step4?.captions || []
+        );
+
+        collectedCaptions = uniqCaptions([...collectedCaptions, ...normalized], 5);
+
+        if (collectedCaptions.length >= 5) break;
+
+        if (attempt < 3) {
+          setStatus(
+            `Step 4/4: Generated ${collectedCaptions.length}/5 captions, retrying…`
+          );
+        }
+      }
+
+      const captions = collectedCaptions;
 
       if (captions.length < 1) {
         throw new Error("No captions returned. Please try again.");

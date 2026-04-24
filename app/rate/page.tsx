@@ -99,7 +99,8 @@ export default function RatePage() {
     const path = pathname || "";
 
     if (path.startsWith("/rate")) {
-      const search = typeof window !== "undefined" ? window.location.search : "";
+      const search =
+        typeof window !== "undefined" ? window.location.search : "";
       const params = new URLSearchParams(search);
 
       if (params.get("mode") === "rate_my_uploads") {
@@ -114,10 +115,21 @@ export default function RatePage() {
 
   const onNavChange = (v: NavMode) => {
     setNavMode(v);
-    setI(0);
 
-    if (v === "upload") router.push("/upload");
-    else if (v === "rate") router.push("/rate");
+    if (v === "upload") {
+      router.push("/upload");
+      return;
+    }
+
+    const targetRows =
+      v === "rate_my_uploads"
+        ? rows.filter((r) => !!r.image_id && myImageIdSet.has(r.image_id))
+        : rows;
+
+    const nextUnrated = targetRows.findIndex((r) => voteMap[r.id] == null);
+    setI(nextUnrated === -1 ? targetRows.length : nextUnrated);
+
+    if (v === "rate") router.push("/rate");
     else router.push("/rate?mode=rate_my_uploads");
   };
 
@@ -133,7 +145,7 @@ export default function RatePage() {
   useEffect(() => {
     setI((prev) => {
       if (!visibleRows.length) return 0;
-      return prev >= visibleRows.length ? 0 : prev;
+      return prev > visibleRows.length ? visibleRows.length : prev;
     });
   }, [visibleRows.length, navMode]);
 
@@ -351,15 +363,13 @@ export default function RatePage() {
       return;
     }
 
-    const { error: insertError } = await supabase
-      .from("caption_votes")
-      .insert({
-        profile_id: userId,
-        caption_id: captionId,
-        vote_value: v,
-        created_by_user_id: userId,
-        modified_by_user_id: userId,
-      });
+    const { error: insertError } = await supabase.from("caption_votes").insert({
+      profile_id: userId,
+      caption_id: captionId,
+      vote_value: v,
+      created_by_user_id: userId,
+      modified_by_user_id: userId,
+    });
 
     if (insertError) throw insertError;
   };
@@ -445,7 +455,8 @@ export default function RatePage() {
         ]) || null;
 
       let extension =
-        pickFirst(img, ["extension", "file_extension", "ext", "format"]) || null;
+        pickFirst(img, ["extension", "file_extension", "ext", "format"]) ||
+        null;
 
       if (!extension) {
         const fromUrlOrPath = exactUrl || exactPath || "";
@@ -493,8 +504,8 @@ export default function RatePage() {
         new Set(
           rawCaptions
             .map((r) => r.image_id)
-            .filter((v): v is string => typeof v === "string" && v.length > 0)
-        )
+            .filter((v): v is string => typeof v === "string" && v.length > 0),
+        ),
       );
 
       const imageMap = new Map<string, ImageMeta>();
@@ -520,7 +531,7 @@ export default function RatePage() {
           (r) =>
             !!r.image_id &&
             typeof r.content === "string" &&
-            r.content.trim().length > 0
+            r.content.trim().length > 0,
         )
         .map((r) => ({
           id: r.id,
@@ -537,7 +548,6 @@ export default function RatePage() {
 
     load();
   }, [sessionReady]);
-
 
   useEffect(() => {
     if (!sessionReady || !userId) return;
@@ -580,7 +590,8 @@ export default function RatePage() {
         ]) || null;
 
       let extension =
-        pickFirst(img, ["extension", "file_extension", "ext", "format"]) || null;
+        pickFirst(img, ["extension", "file_extension", "ext", "format"]) ||
+        null;
 
       if (!extension) {
         const fromUrlOrPath = exactUrl || exactPath || "";
@@ -615,7 +626,10 @@ export default function RatePage() {
 
       const mine = (data || [])
         .map(normalizeImageMeta)
-        .filter((img) => img.id && (!img.ownerProfileId || img.ownerProfileId === userId));
+        .filter(
+          (img) =>
+            img.id && (!img.ownerProfileId || img.ownerProfileId === userId),
+        );
 
       setMyImageMetas(mine);
       setUploadsLoading(false);
@@ -821,7 +835,17 @@ export default function RatePage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saving, current, userId, i, undoStack, voteMap, visibleRows, lastVoteAt, showIntroLock]);
+  }, [
+    saving,
+    current,
+    userId,
+    i,
+    undoStack,
+    voteMap,
+    visibleRows,
+    lastVoteAt,
+    showIntroLock,
+  ]);
 
   const unratedCount = useMemo(() => {
     let c = 0;
@@ -913,8 +937,10 @@ export default function RatePage() {
             <h1 style={{ fontSize: 44, fontWeight: 950, marginBottom: 10 }}>
               You’re done 🎉
             </h1>
-            <p style={{ color: t.muted as any, fontSize: 18, marginBottom: 22 }}>
-No more captions in this batch.
+            <p
+              style={{ color: t.muted as any, fontSize: 18, marginBottom: 22 }}
+            >
+              No more captions in this batch.
             </p>
 
             <button
@@ -936,7 +962,13 @@ No more captions in this batch.
               Want to add more images? →
             </button>
 
-            <div style={{ marginTop: 14, display: "flex", justifyContent: "center" }}>
+            <div
+              style={{
+                marginTop: 14,
+                display: "flex",
+                justifyContent: "center",
+              }}
+            >
               <button
                 onClick={logout}
                 style={{
@@ -975,7 +1007,8 @@ No more captions in this batch.
             filter: showIntroLock ? "blur(10px)" : "none",
             transform: showIntroLock ? "scale(0.995)" : "scale(1)",
             opacity: showIntroLock ? 0.9 : 1,
-            transition: "filter 220ms ease, opacity 220ms ease, transform 220ms ease",
+            transition:
+              "filter 220ms ease, opacity 220ms ease, transform 220ms ease",
             pointerEvents: showIntroLock ? "none" : "auto",
             userSelect: showIntroLock ? "none" : "auto",
           }}
@@ -1277,7 +1310,8 @@ No more captions in this batch.
               transition: "color 1000ms ease",
             }}
           >
-            Keyboard shortcuts: ↑ upvote • ↓ downvote • Z undo • Space pin caption
+            Keyboard shortcuts: ↑ upvote • ↓ downvote • Z undo • Space pin
+            caption
           </div>
 
           <div
@@ -1342,10 +1376,10 @@ No more captions in this batch.
                   marginBottom: 20,
                 }}
               >
-                Look at the image, decide whether the caption works, and vote. Once
-                you dismiss this screen, the page unlocks and you can start rating
-                immediately. Press Space to lock the caption, or hover over the image
-                to preview the caption.
+                Look at the image, decide whether the caption works, and vote.
+                Once you dismiss this screen, the page unlocks and you can start
+                rating immediately. Press Space to lock the caption, or hover
+                over the image to preview the caption.
               </div>
 
               <div
@@ -1474,7 +1508,7 @@ function normalizeToAbsoluteUrl(url: string): string {
 function buildImageCandidates(
   captionProfileId: string,
   imageId: string,
-  imageMeta: ImageMeta | null
+  imageMeta: ImageMeta | null,
 ): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -1497,7 +1531,9 @@ function buildImageCandidates(
   }
 
   const ownerFolder = imageMeta?.ownerProfileId || captionProfileId || "";
-  const knownExt = (imageMeta?.extension || "").replace(/^\./, "").toLowerCase();
+  const knownExt = (imageMeta?.extension || "")
+    .replace(/^\./, "")
+    .toLowerCase();
 
   if (ownerFolder) {
     const base = `${IMAGE_HOST}/${ownerFolder}/${imageId}`;
@@ -1505,7 +1541,7 @@ function buildImageCandidates(
     if (knownExt) push(`${base}.${knownExt}`);
 
     ["jpeg", "jpg", "png", "webp", "gif", "heic", "heif"].forEach((ext) =>
-      push(`${base}.${ext}`)
+      push(`${base}.${ext}`),
     );
   }
 
@@ -1529,7 +1565,7 @@ function SmartImage({
 
   const candidates = useMemo(
     () => buildImageCandidates(captionProfileId, imageId, imageMeta),
-    [captionProfileId, imageId, imageMeta]
+    [captionProfileId, imageId, imageMeta],
   );
 
   useEffect(() => {
@@ -1640,7 +1676,10 @@ function ModeToggle({
 
   return (
     <div style={pillStyle} aria-label="Mode">
-      <button style={btn(value === "upload")} onClick={() => onChange("upload")}>
+      <button
+        style={btn(value === "upload")}
+        onClick={() => onChange("upload")}
+      >
         Upload
       </button>
       <button style={btn(value === "rate")} onClick={() => onChange("rate")}>
@@ -1726,7 +1765,9 @@ function SigningScreen({ subtitle, t }: { subtitle: string; t: any }) {
       >
         Loading…
       </h1>
-      <p style={{ color: t.muted as any, fontSize: "1.05rem", fontWeight: 700 }}>
+      <p
+        style={{ color: t.muted as any, fontSize: "1.05rem", fontWeight: 700 }}
+      >
         {subtitle}
       </p>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -1771,7 +1812,9 @@ function IntroStep({
       >
         {index}
       </div>
-      <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 6 }}>{title}</div>
+      <div style={{ fontWeight: 900, fontSize: 15, marginBottom: 6 }}>
+        {title}
+      </div>
       <div style={{ color: t.muted as any, fontSize: 13, lineHeight: 1.5 }}>
         {body}
       </div>
