@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type VoteValue = -1 | 1;
@@ -50,7 +50,6 @@ const IMAGE_HOST = "https://images.almostcrackd.ai";
 export default function RatePage() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(true);
@@ -97,10 +96,13 @@ export default function RatePage() {
   const [introHydrated, setIntroHydrated] = useState(false);
 
   useEffect(() => {
-    const mode = searchParams.get("mode");
+    const path = pathname || "";
 
-    if ((pathname || "").startsWith("/rate")) {
-      if (mode === "rate_my_uploads") {
+    if (path.startsWith("/rate")) {
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      const params = new URLSearchParams(search);
+
+      if (params.get("mode") === "rate_my_uploads") {
         setNavMode("rate_my_uploads");
       } else {
         setNavMode("rate");
@@ -108,7 +110,7 @@ export default function RatePage() {
     } else {
       setNavMode("upload");
     }
-  }, [pathname, searchParams]);
+  }, [pathname]);
 
   const onNavChange = (v: NavMode) => {
     setNavMode(v);
@@ -912,11 +914,7 @@ export default function RatePage() {
               You’re done 🎉
             </h1>
             <p style={{ color: t.muted as any, fontSize: 18, marginBottom: 22 }}>
-{navMode === "rate_my_uploads"
-                ? uploadsLoading
-                  ? "Loading captions for your uploaded images…"
-                  : "No captions are available for your uploaded images yet."
-                : "No more captions in this batch."}
+No more captions in this batch.
             </p>
 
             <button
