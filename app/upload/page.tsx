@@ -6,7 +6,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type ThemeMode = "auto" | "day" | "night";
-type NavMode = "upload" | "rate";
+type NavMode = "upload" | "rate" | "rate_my_uploads";
 
 type UserInfo = {
   name: string;
@@ -81,13 +81,25 @@ export default function UploadGeneratePage() {
 
   const [navMode, setNavMode] = useState<NavMode>("upload");
   useEffect(() => {
-    if ((pathname || "").startsWith("/rate")) setNavMode("rate");
-    else setNavMode("upload");
+    const path = pathname || "";
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    const params = new URLSearchParams(search);
+
+    if (path.startsWith("/rate") && params.get("mode") === "rate_my_uploads") {
+      setNavMode("rate_my_uploads");
+    } else if (path.startsWith("/rate")) {
+      setNavMode("rate");
+    } else {
+      setNavMode("upload");
+    }
   }, [pathname]);
 
   const onNavChange = (v: NavMode) => {
     setNavMode(v);
-    router.push(v === "upload" ? "/upload" : "/rate");
+
+    if (v === "upload") router.push("/upload");
+    else if (v === "rate") router.push("/rate");
+    else router.push("/rate?mode=rate_my_uploads");
   };
 
   useEffect(() => {
@@ -524,8 +536,8 @@ export default function UploadGeneratePage() {
 
       const captions = uniqCaptions(normalized, 5);
 
-      if (!captions.length) {
-        throw new Error("No captions returned.");
+      if (captions.length < 1) {
+        throw new Error("No captions returned. Please try again.");
       }
 
       setStatus("Saving captions to Supabase…");
@@ -972,19 +984,56 @@ export default function UploadGeneratePage() {
             style={{
               maxWidth: 1100,
               margin: "0 auto",
-              padding: 18,
+              padding: 28,
               borderRadius: 22,
               border: `1px solid ${t.cardBorder}`,
               background: t.cardBg,
               boxShadow: t.shadow,
+              textAlign: "center",
             }}
           >
-            <div style={{ fontWeight: 950, fontSize: 18, marginBottom: 6 }}>
-              No history yet
+            <div style={{ fontWeight: 950, fontSize: 26, marginBottom: 8 }}>
+              Upload your images!
             </div>
-            <div style={{ color: t.muted as any, fontWeight: 850 }}>
-              Upload an image above to generate captions and they’ll show here.
+            <div
+              style={{
+                color: t.muted as any,
+                fontWeight: 850,
+                marginBottom: 18,
+              }}
+            >
+              Choose an image above, run the pipeline, and your generated captions
+              will show here.
             </div>
+            <label
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                padding: "12px 18px",
+                borderRadius: 999,
+                background: t.btnBg,
+                color: t.btnText,
+                fontWeight: 950,
+                cursor: "pointer",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.18)",
+              }}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const picked = e.target.files?.[0] || null;
+                  setFile(picked);
+                  if (picked && typeof window !== "undefined") {
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }
+                }}
+                style={{ display: "none" }}
+              />
+              Upload image
+            </label>
           </div>
         ) : (
           <div style={historyGrid}>
@@ -1108,7 +1157,13 @@ function ModeToggle({
         Upload
       </button>
       <button style={btn(value === "rate")} onClick={() => onChange("rate")}>
-        Rate
+        Rate all
+      </button>
+      <button
+        style={btn(value === "rate_my_uploads")}
+        onClick={() => onChange("rate_my_uploads")}
+      >
+        Rate my uploads
       </button>
     </div>
   );

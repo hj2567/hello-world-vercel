@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type VoteValue = -1 | 1;
@@ -20,7 +20,7 @@ type UserInfo = {
 };
 
 type ThemeMode = "auto" | "day" | "night";
-type NavMode = "upload" | "rate";
+type NavMode = "upload" | "rate" | "rate_my_uploads";
 
 type CaptionRowRaw = {
   id: string;
@@ -50,6 +50,7 @@ const IMAGE_HOST = "https://images.almostcrackd.ai";
 export default function RatePage() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [loading, setLoading] = useState(true);
   const [restoring, setRestoring] = useState(true);
@@ -65,6 +66,9 @@ export default function RatePage() {
 
   const [rows, setRows] = useState<Row[]>([]);
   const [i, setI] = useState(0);
+
+  const [myImageMetas, setMyImageMetas] = useState<ImageMeta[]>([]);
+  const [uploadsLoading, setUploadsLoading] = useState(false);
 
   const [voteMap, setVoteMap] = useState<Record<string, VoteValue | null>>({});
   const [votesLoaded, setVotesLoaded] = useState(false);
@@ -93,16 +97,45 @@ export default function RatePage() {
   const [introHydrated, setIntroHydrated] = useState(false);
 
   useEffect(() => {
-    if ((pathname || "").startsWith("/rate")) setNavMode("rate");
-    else setNavMode("upload");
-  }, [pathname]);
+    const mode = searchParams.get("mode");
+
+    if ((pathname || "").startsWith("/rate")) {
+      if (mode === "rate_my_uploads") {
+        setNavMode("rate_my_uploads");
+      } else {
+        setNavMode("rate");
+      }
+    } else {
+      setNavMode("upload");
+    }
+  }, [pathname, searchParams]);
 
   const onNavChange = (v: NavMode) => {
     setNavMode(v);
-    router.push(v === "upload" ? "/upload" : "/rate");
+    setI(0);
+
+    if (v === "upload") router.push("/upload");
+    else if (v === "rate") router.push("/rate");
+    else router.push("/rate?mode=rate_my_uploads");
   };
 
-  const current = rows[i] || null;
+  const myImageIdSet = useMemo(() => {
+    return new Set(myImageMetas.map((img) => img.id).filter(Boolean));
+  }, [myImageMetas]);
+
+  const visibleRows = useMemo(() => {
+    if (navMode !== "rate_my_uploads") return rows;
+    return rows.filter((r) => !!r.image_id && myImageIdSet.has(r.image_id));
+  }, [navMode, rows, myImageIdSet]);
+
+  useEffect(() => {
+    setI((prev) => {
+      if (!visibleRows.length) return 0;
+      return prev >= visibleRows.length ? 0 : prev;
+    });
+  }, [visibleRows.length, navMode]);
+
+  const current = visibleRows[i] || null;
   const currentHasCaption =
     !!current &&
     typeof current.content === "string" &&
@@ -221,20 +254,20 @@ export default function RatePage() {
   };
 
   const findNextUnratedIndex = (start: number, extraRated?: Set<string>) => {
-    if (!rows.length) return 0;
-    const s = Math.max(0, Math.min(start, rows.length));
-    for (let idx = s; idx < rows.length; idx++) {
-      if (!isRated(rows[idx].id, extraRated)) return idx;
+    if (!visibleRows.length) return 0;
+    const s = Math.max(0, Math.min(start, visibleRows.length));
+    for (let idx = s; idx < visibleRows.length; idx++) {
+      if (!isRated(visibleRows[idx].id, extraRated)) return idx;
     }
     for (let idx = 0; idx < s; idx++) {
-      if (!isRated(rows[idx].id, extraRated)) return idx;
+      if (!isRated(visibleRows[idx].id, extraRated)) return idx;
     }
-    return rows.length;
+    return visibleRows.length;
   };
 
   const jumpToIndex = (idx: number) => {
     setI(idx);
-    const nextId = rows[idx]?.id;
+    const nextId = visibleRows[idx]?.id;
     if (restoreCompleteRef.current && nextId) setLastSeen(nextId);
   };
 
@@ -503,6 +536,92 @@ export default function RatePage() {
     load();
   }, [sessionReady]);
 
+
+  useEffect(() => {
+    if (!sessionReady || !userId) return;
+
+    const normalizeImageMeta = (img: any): ImageMeta => {
+      const exactUrl =
+        pickFirst(img, [
+          "url",
+          "image_url",
+          "public_url",
+          "display_url",
+          "cdn_url",
+          "storage_url",
+          "rendered_url",
+          "processed_url",
+          "signed_url",
+        ]) || null;
+
+      const exactPath =
+        pickFirst(img, [
+          "path",
+          "storage_path",
+          "file_path",
+          "object_path",
+          "key",
+          "object_key",
+          "filename",
+          "file_name",
+          "name",
+        ]) || null;
+
+      const ownerProfileId =
+        pickFirst(img, [
+          "profile_id",
+          "owner_profile_id",
+          "uploader_profile_id",
+          "user_id",
+          "owner_id",
+          "uploaded_by_profile_id",
+        ]) || null;
+
+      let extension =
+        pickFirst(img, ["extension", "file_extension", "ext", "format"]) || null;
+
+      if (!extension) {
+        const fromUrlOrPath = exactUrl || exactPath || "";
+        const m = fromUrlOrPath.match(/\.([a-zA-Z0-9]+)(?:\?|#|$)/);
+        if (m?.[1]) extension = m[1].toLowerCase();
+      }
+
+      return {
+        id: String(img?.id ?? ""),
+        exactUrl,
+        exactPath,
+        ownerProfileId,
+        extension,
+      };
+    };
+
+    const loadMyUploads = async () => {
+      setUploadsLoading(true);
+
+      const { data, error } = await supabase
+        .from("images")
+        .select("*")
+        .order("created_datetime_utc", { ascending: false })
+        .limit(250);
+
+      if (error) {
+        console.error("my uploads lookup failed", error);
+        setMyImageMetas([]);
+        setUploadsLoading(false);
+        return;
+      }
+
+      const mine = (data || [])
+        .map(normalizeImageMeta)
+        .filter((img) => img.id && (!img.ownerProfileId || img.ownerProfileId === userId));
+
+      setMyImageMetas(mine);
+      setUploadsLoading(false);
+    };
+
+    loadMyUploads();
+  }, [sessionReady, userId]);
+
   useEffect(() => {
     const run = async () => {
       if (!userId) return;
@@ -545,14 +664,14 @@ export default function RatePage() {
     const lastId = getLastSeen();
 
     if (lastId) {
-      const idx = rows.findIndex((r) => r.id === lastId);
+      const idx = visibleRows.findIndex((r) => r.id === lastId);
       if (idx !== -1) {
         const start = voteMap[lastId] != null ? idx + 1 : idx;
         const nextIdx = findNextUnratedIndex(start);
 
         setI(nextIdx);
         restoreCompleteRef.current = true;
-        if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
+        if (visibleRows[nextIdx]?.id) setLastSeen(visibleRows[nextIdx].id);
 
         setRestoring(false);
         return;
@@ -562,10 +681,10 @@ export default function RatePage() {
     const nextIdx = findNextUnratedIndex(0);
     setI(nextIdx);
     restoreCompleteRef.current = true;
-    if (rows[nextIdx]?.id) setLastSeen(rows[nextIdx].id);
+    if (visibleRows[nextIdx]?.id) setLastSeen(visibleRows[nextIdx].id);
 
     setRestoring(false);
-  }, [rows, votesLoaded, userId, voteMap]);
+  }, [visibleRows, votesLoaded, userId, voteMap]);
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -621,7 +740,7 @@ export default function RatePage() {
         return copy;
       });
 
-      const backRow = rows[indexBefore];
+      const backRow = visibleRows[indexBefore];
       if (backRow?.id) setLastSeen(backRow.id);
 
       setSaving(false);
@@ -656,7 +775,7 @@ export default function RatePage() {
       setUndoStack((s) => s.slice(0, -1));
       setI(index_before);
 
-      const backRow = rows[index_before];
+      const backRow = visibleRows[index_before];
       if (backRow?.id) setLastSeen(backRow.id);
 
       setSaving(false);
@@ -700,15 +819,15 @@ export default function RatePage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saving, current, userId, i, undoStack, voteMap, rows, lastVoteAt, showIntroLock]);
+  }, [saving, current, userId, i, undoStack, voteMap, visibleRows, lastVoteAt, showIntroLock]);
 
   const unratedCount = useMemo(() => {
     let c = 0;
-    for (const r of rows) if (voteMap[r.id] == null) c++;
+    for (const r of visibleRows) if (voteMap[r.id] == null) c++;
     return c;
-  }, [rows, voteMap]);
+  }, [visibleRows, voteMap]);
 
-  const ratedCount = rows.length - unratedCount;
+  const ratedCount = visibleRows.length - unratedCount;
 
   const bgWrapStyle: CSSProperties = {
     minHeight: "100vh",
@@ -793,7 +912,11 @@ export default function RatePage() {
               You’re done 🎉
             </h1>
             <p style={{ color: t.muted as any, fontSize: 18, marginBottom: 22 }}>
-              No more captions in this batch.
+{navMode === "rate_my_uploads"
+                ? uploadsLoading
+                  ? "Loading captions for your uploaded images…"
+                  : "No captions are available for your uploaded images yet."
+                : "No more captions in this batch."}
             </p>
 
             <button
@@ -925,7 +1048,7 @@ export default function RatePage() {
                     transition: "color 1000ms ease",
                   }}
                 >
-                  {ratedCount} / {rows.length}
+                  {ratedCount} / {visibleRows.length}
                 </div>
               </div>
 
@@ -1136,7 +1259,7 @@ export default function RatePage() {
               <div
                 style={{
                   height: "100%",
-                  width: `${rows.length ? (ratedCount / rows.length) * 100 : 0}%`,
+                  width: `${visibleRows.length ? (ratedCount / visibleRows.length) * 100 : 0}%`,
                   background: t.btnBg,
                   borderRadius: 999,
                   transition: "width 300ms ease",
@@ -1514,7 +1637,7 @@ function ModeToggle({
     background: active ? t.btnBg : "transparent",
     color: active ? t.btnText : t.ghostText,
     transition: "background 1000ms ease, color 1000ms ease",
-    minWidth: 70,
+    minWidth: active ? 116 : 96,
   });
 
   return (
@@ -1523,7 +1646,13 @@ function ModeToggle({
         Upload
       </button>
       <button style={btn(value === "rate")} onClick={() => onChange("rate")}>
-        Rate
+        Rate all
+      </button>
+      <button
+        style={btn(value === "rate_my_uploads")}
+        onClick={() => onChange("rate_my_uploads")}
+      >
+        Rate my uploads
       </button>
     </div>
   );
