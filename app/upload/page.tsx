@@ -529,7 +529,7 @@ export default function UploadGeneratePage() {
 
       let collectedCaptions: string[] = [];
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      for (let attempt = 1; attempt <= 5; attempt++) {
         const step4 = await apiPost<any>("/pipeline/generate-captions", {
           imageId: step3.imageId,
         });
@@ -542,7 +542,7 @@ export default function UploadGeneratePage() {
 
         if (collectedCaptions.length >= 5) break;
 
-        if (attempt < 3) {
+        if (attempt < 5) {
           setStatus(
             `Step 4/4: Generated ${collectedCaptions.length}/5 captions, retrying…`
           );
@@ -551,8 +551,10 @@ export default function UploadGeneratePage() {
 
       const captions = collectedCaptions;
 
-      if (captions.length < 1) {
-        throw new Error("No captions returned. Please try again.");
+      if (captions.length < 5) {
+        throw new Error(
+          `Expected 5 captions, but only generated ${captions.length}. Please try again.`
+        );
       }
 
       setStatus("Saving captions to Supabase…");
